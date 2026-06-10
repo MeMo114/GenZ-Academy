@@ -117,7 +117,7 @@ builder.Services.AddCors(options =>
 {
     options.AddPolicy("NextJsClient", policy =>
         policy.WithOrigins(builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ??
-                           ["http://localhost:3000", "https://localhost:3000", "https://genzacademy.vercel.app"])
+                           ["http://localhost:3000", "https://localhost:3000", "https://genzacademy.vercel.app", "https://genzcoders-azure.vercel.app"])
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials());

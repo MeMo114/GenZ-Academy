@@ -52,7 +52,9 @@ export function AuthExperience() {
       if (u) {
         const targetOrigin = window.location.origin.includes("localhost") 
           ? window.location.origin 
-          : "https://genzacademy.vercel.app";
+          : window.location.origin.includes("genzcoders-azure")
+            ? "https://genzcoders-azure.vercel.app"
+            : "https://genzacademy.vercel.app";
         
         const params = new URLSearchParams(window.location.search);
         const returnUrl = params.get("returnUrl");
@@ -113,7 +115,9 @@ export function AuthExperience() {
         await refresh();
         const targetOrigin = window.location.origin.includes("localhost") 
           ? window.location.origin 
-          : "https://genzacademy.vercel.app";
+          : window.location.origin.includes("genzcoders-azure")
+            ? "https://genzcoders-azure.vercel.app"
+            : "https://genzacademy.vercel.app";
         
         // Use destination from API response or default based on user state
         const destination = data.destination || (data.user?.profileCompleted ? "/dashboard" : "/onboarding");
