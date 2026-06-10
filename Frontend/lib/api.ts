@@ -23,9 +23,7 @@ import type {
 import { env } from "./env-config";
 import * as Sentry from "@sentry/nextjs";
 
-export const API_BASE = typeof window !== "undefined"
-  ? ""
-  : (process.env.NEXT_PUBLIC_API_BASE_URL || "https://genz.runasp.net");
+export const API_BASE = env.apiBaseUrl;
 
 // ─── Brochure Paths ───────────────────────────────────────────────────────────
 export const BROCHURE_MAP: Record<string, string> = {
