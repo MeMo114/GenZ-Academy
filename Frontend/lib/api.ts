@@ -23,7 +23,11 @@ import type {
 import { env } from "./env-config";
 import * as Sentry from "@sentry/nextjs";
 
-export const API_BASE = env.apiBaseUrl;
+export const API_BASE = typeof window !== "undefined"
+  ? window.location.hostname.includes("localhost")
+    ? ""
+    : env.apiBaseUrl
+  : env.apiBaseUrl;
 
 // ─── Brochure Paths ───────────────────────────────────────────────────────────
 export const BROCHURE_MAP: Record<string, string> = {
