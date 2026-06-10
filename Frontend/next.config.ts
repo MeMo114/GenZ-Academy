@@ -33,7 +33,7 @@ const nextConfig: NextConfig = {
     ]
   },
   async rewrites() {
-    const rawUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "https://genzacademy.runasp.net";
+    const rawUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "https://genz.runasp.net";
     const apiBaseUrl = rawUrl.endsWith("/") ? rawUrl.slice(0, -1) : rawUrl;
     return [
       {
