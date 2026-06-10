@@ -14,7 +14,8 @@ public class AuthWorkflowService(
     UserManager<ApplicationUser> userManager,
     SignInManager<ApplicationUser> signInManager,
     INotificationService notifications,
-    IReferralService referrals) : IAuthWorkflowService
+    IReferralService referrals,
+    IConfiguration configuration) : IAuthWorkflowService
 {
     public async Task<AuthUserDto> RegisterAsync(RegisterRequest request, CancellationToken cancellationToken = default)
     {
@@ -67,6 +68,11 @@ public class AuthWorkflowService(
     {
         var user = await userManager.FindByEmailAsync(request.Email.Trim().ToLowerInvariant())
             ?? throw new InvalidOperationException("Invalid email or password.");
+
+        if (!user.IsActive)
+        {
+            throw new InvalidOperationException("Account is deactivated. Please contact support.");
+        }
 
         var result = await signInManager.PasswordSignInAsync(user, request.Password, request.RememberMe, lockoutOnFailure: true);
         if (!result.Succeeded)
@@ -192,6 +198,111 @@ public class AuthWorkflowService(
         await db.SaveChangesAsync(cancellationToken);
         await notifications.QueueAsync(userId, "Profile completed", "You earned 100 XP for completing your profile.", [NotificationChannel.InApp, NotificationChannel.Email], cancellationToken);
         return await ToDtoAsync(user, cancellationToken);
+    }
+
+    public async Task ForgotPasswordAsync(string email, CancellationToken cancellationToken = default)
+    {
+        var user = await userManager.FindByEmailAsync(email.Trim().ToLowerInvariant());
+        if (user is null) return; // Silent return for security
+
+        var token = await userManager.GeneratePasswordResetTokenAsync(user);
+        var frontendUrl = configuration["Frontend:Url"]?.TrimEnd('/') ?? "http://localhost:3000";
+        var resetLink = $"{frontendUrl}/reset-password?token={Uri.EscapeDataString(token)}&userId={user.Id}";
+
+        await notifications.QueueAsync(
+            user.Id,
+            "Reset your password",
+            $"Hi {user.FirstName}, click the link below to reset your password. If you didn't request this, you can ignore this email.\n\n{resetLink}",
+            [NotificationChannel.Email],
+            cancellationToken);
+    }
+
+    public async Task ResetPasswordAsync(ResetPasswordRequest request, CancellationToken cancellationToken = default)
+    {
+        var user = await userManager.FindByIdAsync(request.UserId.ToString())
+            ?? throw new InvalidOperationException("User not found.");
+
+        var result = await userManager.ResetPasswordAsync(user, request.Token, request.NewPassword);
+        if (!result.Succeeded)
+        {
+            throw new InvalidOperationException(string.Join("; ", result.Errors.Select(x => x.Description)));
+        }
+
+        await notifications.QueueAsync(
+            user.Id,
+            "Password reset successful",
+            $"Hi {user.FirstName}, your password has been successfully updated. You can now log in with your new password.",
+            [NotificationChannel.InApp, NotificationChannel.Email],
+            cancellationToken);
+    }
+
+    public async Task InitializeUserAccountAsync(ApplicationUser user, CancellationToken cancellationToken = default)
+    {
+        // 1. Role Assignment
+        var role = user.RoleKey;
+        if (string.IsNullOrWhiteSpace(role)) return;
+
+        // Ensure role is assigned in Identity
+        if (!await userManager.IsInRoleAsync(user, role))
+        {
+            await userManager.AddToRoleAsync(user, role);
+        }
+
+        // 2. Profile Creation based on Role
+        if (role == AcademyRole.Student)
+        {
+            if (!await db.StudentProfiles.AnyAsync(p => p.UserId == user.Id, cancellationToken))
+            {
+                var referralCode = await referrals.GenerateUniqueCodeAsync(user.FirstName, cancellationToken);
+                db.StudentProfiles.Add(new StudentProfile
+                {
+                    UserId = user.Id,
+                    ReferralCode = referralCode,
+                    IsOnboardingCompleted = false,
+                    TotalXp = 0,
+                    Level = 1,
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+            }
+        }
+        else if (role == AcademyRole.Engineer || role == AcademyRole.Cta)
+        {
+            if (!await db.StaffProfiles.AnyAsync(p => p.UserId == user.Id, cancellationToken))
+            {
+                db.StaffProfiles.Add(new StaffProfile
+                {
+                    UserId = user.Id,
+                    IsCta = (role == AcademyRole.Cta),
+                    Bio = "Academy Staff Member",
+                    Position = role == AcademyRole.Cta ? "CAT Officer" : "Engineer",
+                    Department = "Education",
+                    Specialization = "Technical",
+                    CreatedAt = DateTimeOffset.UtcNow
+                });
+            }
+        }
+
+        // 3. Notification Settings (Shared for all roles)
+        if (!await db.UserNotificationSettings.AnyAsync(s => s.UserId == user.Id, cancellationToken))
+        {
+            db.UserNotificationSettings.Add(new UserNotificationSetting
+            {
+                UserId = user.Id,
+                EmailEnabled = true,
+                WhatsAppEnabled = true,
+                InAppEnabled = true
+            });
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        // 4. Welcome Notification
+        await notifications.QueueAsync(
+            user.Id,
+            "Welcome to ElSewedy Academy",
+            $"Hi {user.FirstName}, your {role} account has been successfully initialized. Welcome aboard!",
+            [NotificationChannel.InApp, NotificationChannel.Email],
+            cancellationToken);
     }
 
     private async Task<EmailVerificationCode> LatestVerificationAsync(Guid userId, VerificationPurpose purpose, CancellationToken cancellationToken)

@@ -1,6 +1,7 @@
 using GenZCoders.Data;
 using GenZCoders.DTOs;
 using System.Security.Cryptography;
+using System.Security.Claims;
 using System.Text;
 using GenZCoders.Models;
 using Microsoft.AspNetCore.Authorization;
@@ -109,4 +110,21 @@ public class PaymentsController(AcademyDbContext db, IConfiguration configuratio
             return Redirect($"{frontendUrl}/applications?payment=failed&order={order}");
         }
     }
+
+    [Authorize(Roles = AcademyRole.Student)]
+    [HttpPost("orders/{orderId:guid}/payment-receipt")]
+    public async Task<IActionResult> UploadOrderReceipt(Guid orderId, [FromBody] UploadPaymentReceiptRequest request, CancellationToken cancellationToken)
+    {
+        var order = await db.EnrollmentOrders.FirstOrDefaultAsync(x => x.Id == orderId && x.StudentUserId == CurrentUserId(), cancellationToken);
+        if (order is null) return NotFound();
+        
+        order.PaymentReceiptUrl = request.ReceiptUrl;
+        order.PaymentMethod = request.PaymentMethod;
+        order.PaymentReceiptPendingReview = true;
+        await db.SaveChangesAsync(cancellationToken);
+        return Ok(new { success = true });
+    }
+
+    private Guid CurrentUserId()
+        => Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : Guid.Empty;
 }

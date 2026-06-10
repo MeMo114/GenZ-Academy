@@ -48,6 +48,14 @@ const nextConfig: NextConfig = {
         source: "/signin-google",
         destination: `${apiBaseUrl}/signin-google`,
       },
+      {
+        source: "/uploads/:path*",
+        destination: `${apiBaseUrl}/uploads/:path*`,
+      },
+      {
+        source: "/content/:path*",
+        destination: `${apiBaseUrl}/content/:path*`,
+      }
     ];
   }
 };

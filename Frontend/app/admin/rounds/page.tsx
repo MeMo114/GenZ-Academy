@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAdminRounds, createAdminRound, updateRound, getAdminCourses } from "@/lib/api";
+import { getAdminRounds, createAdminRound, updateRound, getAdminCourses, getAdminUsers } from "@/lib/api";
 import type { CourseRound, AdminCourse } from "@/lib/types";
-import { Plus, X, FloppyDisk, ArrowLeft, UsersThree, CalendarBlank, PencilSimple, Trash, Certificate, ArrowRight, FolderOpen } from "@phosphor-icons/react";
+import { Plus, X, FloppyDisk, ArrowLeft, UsersThree, CalendarBlank, PencilSimple, Trash, Certificate, ArrowRight, FolderOpen, UserGear, IdentificationCard } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useToast } from "@/lib/toast-context";
 import { PremiumSwitch } from "@/components/PremiumControls";
@@ -13,6 +13,8 @@ import { SkeletonCard } from "@/components/ui/Skeleton";
 export default function AdminRoundsPage() {
   const [rounds, setRounds] = useState<CourseRound[]>([]);
   const [courses, setCourses] = useState<AdminCourse[]>([]);
+  const [engineers, setEngineers] = useState<any[]>([]);
+  const [ctas, setCtas] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [editing, setEditing] = useState<CourseRound | null>(null);
@@ -24,11 +26,22 @@ export default function AdminRoundsPage() {
     startDate: new Date().toISOString().split('T')[0],
     maxStudents: 20, isEnrollmentOpen: true,
     autoAcceptPaidApplications: false, requireEngineerApproval: true,
+    engineerUserId: "" as string | null, ctaUserId: "" as string | null
   });
 
   useEffect(() => {
-    Promise.all([getAdminRounds(), getAdminCourses()])
-      .then(([r, c]) => { setRounds(r); setCourses(c); })
+    Promise.all([
+      getAdminRounds(),
+      getAdminCourses(),
+      getAdminUsers("engineer"),
+      getAdminUsers("cta")
+    ])
+      .then(([r, c, engs, ctaUsers]) => {
+        setRounds(r);
+        setCourses(c);
+        setEngineers(engs);
+        setCtas(ctaUsers);
+      })
       .finally(() => setLoading(false));
   }, []);
 
@@ -40,6 +53,8 @@ export default function AdminRoundsPage() {
       startDate: new Date().toISOString().split('T')[0],
       maxStudents: 20, isEnrollmentOpen: true,
       autoAcceptPaidApplications: false, requireEngineerApproval: true,
+      engineerUserId: "",
+      ctaUserId: ""
     });
     setShowForm(true);
   };
@@ -54,6 +69,8 @@ export default function AdminRoundsPage() {
       isEnrollmentOpen: round.isEnrollmentOpen,
       autoAcceptPaidApplications: round.autoAcceptPaidApplications || false,
       requireEngineerApproval: round.requireEngineerApproval || true,
+      engineerUserId: round.engineerUserId || "",
+      ctaUserId: round.ctaUserId || ""
     });
     setShowForm(true);
   };
@@ -62,11 +79,17 @@ export default function AdminRoundsPage() {
     if (!form.name || !form.slug) { toast("Name and slug are required", "error"); return; }
     setSaving(true);
     try {
+      const payload = {
+        ...form,
+        engineerUserId: form.engineerUserId || null,
+        ctaUserId: form.ctaUserId || null
+      };
+
       if (editing) {
-        await updateRound(editing.id, form);
+        await updateRound(editing.id, payload);
         toast("Round updated", "success");
       } else {
-        await createAdminRound(form);
+        await createAdminRound(payload);
         toast("Round created", "success");
       }
       setRounds(await getAdminRounds());
@@ -142,6 +165,22 @@ export default function AdminRoundsPage() {
                   </div>
                   <span>{r.startDate ? new Date(r.startDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'TBD'}</span>
                 </div>
+                {r.instructorName && (
+                  <div className="flex items-center gap-3 text-xs font-bold text-emerald-600">
+                    <div className="w-8 h-8 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-500">
+                      <UserGear size={16} weight="fill" />
+                    </div>
+                    <span>{r.instructorName}</span>
+                  </div>
+                )}
+                {r.ctaName && (
+                  <div className="flex items-center gap-3 text-xs font-bold text-blue-600">
+                    <div className="w-8 h-8 rounded-xl bg-blue-50 border border-blue-100 flex items-center justify-center text-blue-500">
+                      <IdentificationCard size={16} weight="fill" />
+                    </div>
+                    <span>{r.ctaName}</span>
+                  </div>
+                )}
               </div>
 
               {/* Progress and Capacity Visualizer */}
@@ -228,6 +267,31 @@ export default function AdminRoundsPage() {
                 <div className="flex flex-col gap-1.5">
                   <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Max Students</label>
                   <input type="number" {...field("maxStudents")} className="w-full px-4 py-3 bg-zinc-50 rounded-xl border border-black/5 font-bold" />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 flex items-center gap-1">
+                    <UserGear size={14} weight="bold" /> Assigned Engineer
+                  </label>
+                  <select {...field("engineerUserId")} className="w-full px-4 py-3 bg-zinc-50 rounded-xl border border-black/5 font-bold text-sm">
+                    <option value="">No Engineer Assigned</option>
+                    {engineers.map(e => (
+                      <option key={e.id} value={e.id}>{e.displayName}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="flex flex-col gap-1.5">
+                  <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1 flex items-center gap-1">
+                    <IdentificationCard size={14} weight="bold" /> Assigned CTA
+                  </label>
+                  <select {...field("ctaUserId")} className="w-full px-4 py-3 bg-zinc-50 rounded-xl border border-black/5 font-bold text-sm">
+                    <option value="">No CTA Assigned</option>
+                    {ctas.map(c => (
+                      <option key={c.id} value={c.id}>{c.displayName}</option>
+                    ))}
+                  </select>
                 </div>
               </div>
               <div className="flex flex-col gap-4 pt-2">

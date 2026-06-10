@@ -17,7 +17,7 @@ namespace GenZCoders.Migrations
         {
 #pragma warning disable 612, 618
             modelBuilder
-                .HasAnnotation("ProductVersion", "10.0.0")
+                .HasAnnotation("ProductVersion", "9.0.0")
                 .HasAnnotation("Relational:MaxIdentifierLength", 128);
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
@@ -881,6 +881,12 @@ namespace GenZCoders.Migrations
                         .HasColumnType("datetimeoffset");
 
                     b.Property<string>("PaymentMethod")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<bool>("PaymentReceiptPendingReview")
+                        .HasColumnType("bit");
+
+                    b.Property<string>("PaymentReceiptUrl")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("PaymentReference")

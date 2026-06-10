@@ -52,6 +52,7 @@ public class AdminController(
                 c.Outcome, c.MinimumAge, c.MaximumAge, c.PriceEgp, c.CoverImageUrl, c.ImageUrl,
                 c.IconName, c.ColorHex, c.SkillsTaughtJson, c.Phase, c.SortOrder,
                 c.CoreSessions, c.SupportSessions, c.Level, c.IsActive, c.IsFeatured, c.IsDeleted,
+                c.CourseSessions.Count,
                 c.Modules.OrderBy(m => m.SortOrder)
                          .Select(m => new CourseModuleDto(m.SortOrder, m.Title, m.ProjectOutcome))
                          .ToList()))
@@ -73,7 +74,7 @@ public class AdminController(
         var roundsCount = await db.Cohorts.CountAsync(x => x.CourseId == course.Id, cancellationToken);
         var enrollmentsCount = await db.CohortEnrollments.CountAsync(x => x.Cohort.CourseId == course.Id, cancellationToken);
         var materialsCount = await db.CourseMaterials.CountAsync(x => x.CourseId == course.Id, cancellationToken);
-        var sessionsCount = await db.SessionInstances.CountAsync(x => x.Cohort.CourseId == course.Id, cancellationToken);
+        var sessionsCount = await db.CourseSessions.CountAsync(x => x.CourseId == course.Id, cancellationToken);
         var activeRoundsCount = await db.Cohorts.CountAsync(x => x.CourseId == course.Id && x.Status == CohortStatus.Active, cancellationToken);
 
         return Ok(new
@@ -301,6 +302,10 @@ public class AdminController(
                 r.IsEnrollmentOpen,
                 r.AutoAcceptPaidApplications,
                 r.RequireEngineerApproval,
+                r.EngineerUserId,
+                r.CtaUserId,
+                InstructorName      = r.EngineerUser == null ? "" : (r.EngineerUser.FirstName + " " + r.EngineerUser.LastName).Trim(),
+                CtaName             = r.CtaUser == null ? "" : (r.CtaUser.FirstName + " " + r.CtaUser.LastName).Trim(),
                 r.ZoomMeetingId,
                 r.ZoomJoinUrl,
                 r.ZoomStartUrl
@@ -368,13 +373,21 @@ public class AdminController(
             .ToListAsync(cancellationToken);
 
         var studentUserIds = round.CohortEnrollments.Select(e => e.StudentUserId).ToList();
-        var applicationsMap = await db.CourseApplications
-            .AsNoTracking()
-            .Where(x => x.CourseId == round.CourseId && studentUserIds.Contains(x.StudentUserId))
-            .GroupBy(x => x.StudentUserId)
-            .Select(g => g.OrderByDescending(x => x.SubmittedAt).FirstOrDefault())
-            .Where(x => x != null)
-            .ToDictionaryAsync(x => x!.StudentUserId, x => x!.Id, cancellationToken);
+        
+        Dictionary<Guid, Guid> applicationsMap = new();
+        if (studentUserIds.Any())
+        {
+            var apps = await db.CourseApplications
+                .AsNoTracking()
+                .Where(x => x.CourseId == round.CourseId && studentUserIds.Contains(x.StudentUserId))
+                .Select(x => new { x.Id, x.StudentUserId, x.SubmittedAt })
+                .ToListAsync(cancellationToken);
+
+            applicationsMap = apps
+                .GroupBy(x => x.StudentUserId)
+                .Select(g => g.OrderByDescending(x => x.SubmittedAt).First())
+                .ToDictionary(x => x.StudentUserId, x => x.Id);
+        }
 
         var students = round.CohortEnrollments.Select(e => new
         {
@@ -452,18 +465,27 @@ public class AdminController(
     }
 
     [HttpPost("rounds")]
-    public async Task<IActionResult> CreateRound(AdminRoundCreateRequest request, CancellationToken cancellationToken)
+    public async Task<IActionResult> CreateRound([FromBody] AdminRoundCreateRequest request, CancellationToken cancellationToken)
     {
+        // Ensure slug is unique
+        var slug = request.Slug.Trim().ToLowerInvariant();
+        if (await db.Cohorts.AnyAsync(x => x.Slug == slug, cancellationToken))
+        {
+            return BadRequest(new { message = $"The round slug '{slug}' is already in use. Please choose a unique slug." });
+        }
+
         var cohort = new Cohort
         {
             CourseId                  = request.CourseId,
             Name                      = request.Name,
-            Slug                      = request.Slug.Trim().ToLowerInvariant(),
+            Slug                      = slug,
             StartDate                 = request.StartDate,
             MaxStudents               = request.MaxStudents,
             IsEnrollmentOpen          = request.IsEnrollmentOpen,
             AutoAcceptPaidApplications = request.AutoAcceptPaidApplications,
             RequireEngineerApproval   = request.RequireEngineerApproval,
+            EngineerUserId            = request.EngineerUserId,
+            CtaUserId                 = request.CtaUserId,
             Status                    = CohortStatus.Upcoming
         };
 
@@ -790,6 +812,8 @@ public class AdminController(
         round.IsEnrollmentOpen = request.IsEnrollmentOpen;
         round.AutoAcceptPaidApplications = request.AutoAcceptPaidApplications;
         round.RequireEngineerApproval = request.RequireEngineerApproval;
+        round.EngineerUserId = request.EngineerUserId;
+        round.CtaUserId = request.CtaUserId;
 
         await db.SaveChangesAsync(cancellationToken);
         return Ok(new { updated = true });
@@ -858,47 +882,81 @@ public class AdminController(
 
     // ── Students ─────────────────────────────────────────────────────────────
     [HttpGet("students")]
-    public async Task<IActionResult> GetStudents([FromQuery] string? search, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken cancellationToken = default)
+    public async Task<IActionResult> GetStudents([FromQuery] string? search, [FromQuery] Guid? courseId, [FromQuery] string? status, [FromQuery] int page = 1, [FromQuery] int pageSize = 50, CancellationToken cancellationToken = default)
     {
-        var query = db.Enrollments
+        // 1. Get all user IDs who have the "student" role
+        var studentRoleUserIds = await db.UserRoles
+            .Join(db.Roles, ur => ur.RoleId, r => r.Id, (ur, r) => new { ur.UserId, r.Name })
+            .Where(x => x.Name == AcademyRole.Student)
+            .Select(x => x.UserId)
+            .ToListAsync(cancellationToken);
+
+        // 2. Query Users table instead of Enrollments
+        var query = db.Users
             .AsNoTracking()
-            .Include(x => x.StudentUser)
-            .Include(x => x.Course)
+            .Where(u => studentRoleUserIds.Contains(u.Id))
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
         {
             var lower = search.ToLower();
-            query = query.Where(x => 
-                (x.StudentUser != null && (x.StudentUser.FirstName + " " + x.StudentUser.LastName).ToLower().Contains(lower)) ||
-                (x.StudentUser != null && x.StudentUser.Email != null && x.StudentUser.Email.ToLower().Contains(lower)) ||
-                (x.Course != null && x.Course.Title.ToLower().Contains(lower)));
+            query = query.Where(u => 
+                (u.FirstName + " " + u.LastName).ToLower().Contains(lower) ||
+                (u.Email != null && u.Email.ToLower().Contains(lower)));
+        }
+
+        // Apply Course and Status filters via Enrollments if needed
+        if (courseId.HasValue || !string.IsNullOrWhiteSpace(status))
+        {
+            var filteredEnrollmentQuery = db.Enrollments.AsNoTracking().AsQueryable();
+            if (courseId.HasValue) filteredEnrollmentQuery = filteredEnrollmentQuery.Where(e => e.CourseId == courseId.Value);
+            if (!string.IsNullOrWhiteSpace(status)) filteredEnrollmentQuery = filteredEnrollmentQuery.Where(e => e.Status == status);
+
+            var filteredStudentIds = await filteredEnrollmentQuery.Select(e => e.StudentUserId).Distinct().ToListAsync(cancellationToken);
+            query = query.Where(u => filteredStudentIds.Contains(u.Id));
         }
 
         var totalCount = await query.CountAsync(cancellationToken);
         var skip = (page - 1) * pageSize;
 
-        var students = await query
-            .OrderByDescending(x => x.CreatedAt)
+        var users = await query
+            .OrderByDescending(u => u.CreatedAt)
             .Skip(skip)
             .Take(pageSize)
-            .Select(x => new
-            {
-                x.Id,
-                StudentId = x.StudentUserId,
-                StudentName = x.StudentUser == null ? "Unknown" : x.StudentUser.FirstName + " " + x.StudentUser.LastName,
-                StudentEmail = x.StudentUser == null ? "" : x.StudentUser.Email ?? "",
-                StudentXp = x.StudentUser == null ? 0 : x.StudentUser.TotalXp,
-                CourseName = x.Course == null ? "Unknown" : x.Course.Title,
-                x.EnrollmentStatus,
-                x.CreatedAt,
-                x.FinalPriceEgp
-            })
             .ToListAsync(cancellationToken);
+
+        // 3. Enrich with enrollment data if exists
+        var studentIds = users.Select(u => u.Id).ToList();
+        var enrollments = await db.Enrollments
+            .AsNoTracking()
+            .Include(e => e.Course)
+            .Where(e => studentIds.Contains(e.StudentUserId))
+            .ToListAsync(cancellationToken);
+
+        var result = users.Select(u => {
+            var latestEnrollment = enrollments
+                .Where(e => e.StudentUserId == u.Id)
+                .OrderByDescending(e => e.CreatedAt)
+                .FirstOrDefault();
+
+            return new
+            {
+                Id = u.Id, // Important: Use User ID as the unique ID for the list
+                StudentId = u.Id,
+                StudentName = u.FirstName + " " + u.LastName,
+                StudentEmail = u.Email ?? "",
+                StudentXp = u.TotalXp,
+                CourseName = latestEnrollment?.Course?.Title ?? "Not Enrolled",
+                EnrollmentStatus = latestEnrollment?.Status ?? "None",
+                u.CreatedAt,
+                FinalPriceEgp = latestEnrollment?.FinalPriceEgp ?? 0,
+                IsActive = u.IsActive
+            };
+        });
 
         return Ok(new
         {
-            items = students,
+            items = result,
             totalCount,
             page,
             pageSize,
@@ -959,12 +1017,17 @@ public class AdminController(
 
         Cohort? cohort = null;
         if (request.CourseRoundId.HasValue)
+        {
             cohort = await db.Cohorts.FindAsync([request.CourseRoundId.Value], cancellationToken);
+            if (cohort is null) return NotFound("Round (Cohort) not found");
+        }
 
+        // 1. Check if enrollment already exists for this course
         var existing = await db.Enrollments.AnyAsync(x =>
             x.StudentUserId == request.StudentUserId && x.CourseId == request.CourseId, cancellationToken);
         if (existing) return Conflict("Student is already enrolled in this course");
 
+        // 2. Create the main Enrollment record
         var enrollment = new Enrollment
         {
             StudentUserId = request.StudentUserId,
@@ -978,6 +1041,25 @@ public class AdminController(
         };
         db.Enrollments.Add(enrollment);
 
+        // 3. Create CohortEnrollment if a cohort was selected
+        if (cohort != null)
+        {
+            var cohortEnrollment = new CohortEnrollment
+            {
+                CohortId = cohort.Id,
+                StudentUserId = request.StudentUserId,
+                Enrollment = enrollment, // Use navigation property to ensure EF links them after ID generation
+                EnrolledAt = DateTimeOffset.UtcNow
+            };
+            db.CohortEnrollments.Add(cohortEnrollment);
+            
+            // 4. Update cohort student count
+            // Count current enrollments and add the one we just created
+            var existingCount = await db.CohortEnrollments.CountAsync(x => x.CohortId == cohort.Id, cancellationToken);
+            cohort.CurrentStudents = existingCount + 1;
+        }
+
+        // 5. Send notification
         await db.NotificationMessages.AddAsync(new NotificationMessage
         {
             RecipientUserId = request.StudentUserId,
@@ -989,6 +1071,48 @@ public class AdminController(
 
         await db.SaveChangesAsync(cancellationToken);
         return Ok(new { id = enrollment.Id });
+    }
+
+    [HttpDelete("enrollments/{id}")]
+    public async Task<IActionResult> DeleteEnrollment(string id, CancellationToken cancellationToken)
+    {
+        if (!Guid.TryParse(id, out var guidId))
+        {
+            return BadRequest(new { message = "Invalid enrollment ID format" });
+        }
+
+        var enrollment = await db.Enrollments
+            .Include(x => x.Cohort)
+            .FirstOrDefaultAsync(x => x.Id == guidId, cancellationToken);
+            
+        if (enrollment == null) 
+        {
+            return NotFound(new { message = $"Enrollment {id} not found." });
+        }
+
+        // 1. Remove associated CohortEnrollment (roster link)
+        var cohortEnrollment = await db.CohortEnrollments
+            .FirstOrDefaultAsync(x => x.EnrollmentId == guidId, cancellationToken);
+            
+        if (cohortEnrollment != null)
+        {
+            db.CohortEnrollments.Remove(cohortEnrollment);
+            
+            // 2. Update student count if cohort exists
+            if (enrollment.Cohort != null)
+            {
+                // Count current enrollments excluding the one we are deleting
+                var currentCount = await db.CohortEnrollments
+                    .CountAsync(x => x.CohortId == enrollment.CohortId && x.EnrollmentId != guidId, cancellationToken);
+                enrollment.Cohort.CurrentStudents = Math.Max(0, currentCount);
+            }
+        }
+
+        // 3. Remove main enrollment record
+        db.Enrollments.Remove(enrollment);
+
+        await db.SaveChangesAsync(cancellationToken);
+        return NoContent();
     }
 
     // ── Analytics Summary ────────────────────────────────────────────────────
@@ -1227,13 +1351,21 @@ public class AdminController(
         if (cohort is null) return NotFound();
 
         var studentUserIds = cohort.CohortEnrollments.Select(e => e.StudentUserId).ToList();
-        var applicationsMap = await db.CourseApplications
-            .AsNoTracking()
-            .Where(x => studentUserIds.Contains(x.StudentUserId))
-            .GroupBy(x => x.StudentUserId)
-            .Select(g => g.OrderByDescending(x => x.SubmittedAt).FirstOrDefault())
-            .Where(x => x != null)
-            .ToDictionaryAsync(x => x!.StudentUserId, x => x!.Id, cancellationToken);
+        
+        Dictionary<Guid, Guid> applicationsMap = new();
+        if (studentUserIds.Any())
+        {
+            var apps = await db.CourseApplications
+                .AsNoTracking()
+                .Where(x => studentUserIds.Contains(x.StudentUserId))
+                .Select(x => new { x.Id, x.StudentUserId, x.SubmittedAt })
+                .ToListAsync(cancellationToken);
+
+            applicationsMap = apps
+                .GroupBy(x => x.StudentUserId)
+                .Select(g => g.OrderByDescending(x => x.SubmittedAt).First())
+                .ToDictionary(x => x.StudentUserId, x => x.Id);
+        }
 
         var students = cohort.CohortEnrollments.Select(e => new
         {
@@ -1360,7 +1492,7 @@ public class AdminController(
 }
 
 public record AdminUpdateStatusRequest(string Status);
-public record AdminRoundUpdateRequest(string Name, DateTimeOffset StartDate, int MaxStudents, bool IsEnrollmentOpen, bool AutoAcceptPaidApplications, bool RequireEngineerApproval);
+public record AdminRoundUpdateRequest(string Name, DateTimeOffset StartDate, int MaxStudents, bool IsEnrollmentOpen, bool AutoAcceptPaidApplications, bool RequireEngineerApproval, Guid? EngineerUserId = null, Guid? CtaUserId = null);
 public record AdminCourseSessionRequest(Guid CourseId, string Title, string? Description, string SessionType, int SortOrder, int DurationMinutes);
 public record AdminMaterialUploadRequest(string Title, string MaterialType, string Url, bool IsDownloadable);
 public record AdminSessionInstanceRequest(string Status, string? SessionLink, string? RecordingUrl, int? WeekNumber);

@@ -25,7 +25,7 @@ import * as Sentry from "@sentry/nextjs";
 
 export const API_BASE = typeof window !== "undefined"
   ? ""
-  : (process.env.NEXT_PUBLIC_API_BASE_URL || "https://genzacademy.runasp.net");
+  : (process.env.NEXT_PUBLIC_API_BASE_URL || "https://genz.runasp.net");
 
 // ─── Brochure Paths ───────────────────────────────────────────────────────────
 export const BROCHURE_MAP: Record<string, string> = {
@@ -50,11 +50,17 @@ const FALLBACK_COURSES: Course[] = [
     priceEgp: 500,
     coreSessions: 8,
     supportSessions: 4,
+    sessionsCount: 12,
     level: "Beginner",
     colorHex: "#7C3AED",
     iconName: "🎮",
     skillsTaughtJson: '["Events","Loops","Conditionals","Sprites","Animation","Game Logic"]',
     phase: 1,
+    description: "Animations, games, logic, and creative confidence with Scratch.",
+    isActive: true,
+    isFeatured: true,
+    isDeleted: false,
+    sortOrder: 1,
   },
   {
     id: "b2222222-2222-2222-2222-222222222222",
@@ -68,11 +74,17 @@ const FALLBACK_COURSES: Course[] = [
     priceEgp: 600,
     coreSessions: 8,
     supportSessions: 4,
+    sessionsCount: 12,
     level: "Intermediate",
     colorHex: "#0EA5E9",
     iconName: "💻",
     skillsTaughtJson: '["Variables","Functions","Loops","Arrays","Pointers","Logic"]',
     phase: 1,
+    description: "Variables, functions, logic, and your first console programs.",
+    isActive: true,
+    isFeatured: true,
+    isDeleted: false,
+    sortOrder: 2,
   },
   {
     id: "c3333333-3333-3333-3333-333333333333",
@@ -85,11 +97,17 @@ const FALLBACK_COURSES: Course[] = [
     priceEgp: 700,
     coreSessions: 8,
     supportSessions: 4,
+    sessionsCount: 12,
     level: "Advanced",
     colorHex: "#EF4444",
     iconName: "⚡",
     skillsTaughtJson: '["OOP","Classes","Inheritance","SFML","Data Structures","Game Physics"]',
     phase: 1,
+    description: "OOP, data structures, and game development with SFML.",
+    isActive: true,
+    isFeatured: true,
+    isDeleted: false,
+    sortOrder: 3,
   },
   {
     id: "d4444444-4444-4444-4444-444444444444",
@@ -103,11 +121,17 @@ const FALLBACK_COURSES: Course[] = [
     priceEgp: 750,
     coreSessions: 8,
     supportSessions: 4,
+    sessionsCount: 12,
     level: "Maker",
     colorHex: "#F59E0B",
     iconName: "🤖",
     skillsTaughtJson: '["Arduino","Sensors","Motors","Circuit Design","Programming","Debugging"]',
     phase: 1,
+    description: "Design and program a real Arduino-powered robot from scratch.",
+    isActive: true,
+    isFeatured: true,
+    isDeleted: false,
+    sortOrder: 4,
   },
   {
     id: "e5555555-5555-5555-5555-555555555555",
@@ -120,11 +144,17 @@ const FALLBACK_COURSES: Course[] = [
     priceEgp: 650,
     coreSessions: 8,
     supportSessions: 4,
+    sessionsCount: 12,
     level: "Creator",
     colorHex: "#10B981",
     iconName: "🌐",
     skillsTaughtJson: '["HTML","CSS","JavaScript","APIs","AI Tools","Deployment","Git"]',
     phase: 1,
+    description: "Ship a live web app using AI-assisted product workflows.",
+    isActive: true,
+    isFeatured: true,
+    isDeleted: false,
+    sortOrder: 5,
   },
 ];
 
@@ -258,9 +288,22 @@ export async function apiDelete<T>(path: string, fallback?: T): Promise<T> {
     });
 
     if (!res.ok) {
-      Sentry.captureMessage(`API Error ${res.status}: DELETE ${path}`, "error");
+      const text = await res.text();
+      Sentry.captureMessage(`API Error ${res.status}: DELETE ${path}`, {
+        level: "error",
+        extra: { errorBody: text }
+      });
+      
       if (fallback !== undefined) return fallback;
-      throw new Error(`Delete failed: ${res.status}`);
+
+      let message = `Delete failed: ${res.status}`;
+      try {
+        const json = JSON.parse(text);
+        if (json.message) message = json.message;
+      } catch {
+        if (text) message = text;
+      }
+      throw new Error(message);
     }
 
     const text = await res.text();
@@ -346,7 +389,7 @@ export function getApplicationQuestions(courseId: string, courseRoundId?: string
 export const getCart = () => apiGet<Cart | null>("/api/cart", null);
 export const addToCart = (courseId: string) => apiPost<Cart>("/api/cart/items", { courseId });
 export const removeFromCart = (itemId: string) => apiDelete<void>(`/api/cart/items/${itemId}`);
-export const checkoutCart = (data: any) => apiPost<void>("/api/cart/checkout", data);
+export const checkoutCart = (data: any) => apiPost<any>("/api/cart/checkout", data);
 
 export const validatePromoCode = (code: string) => 
   apiPost<Cart>("/api/cart/promo", { code });
@@ -625,11 +668,24 @@ export const toggleUserActive = (id: string) =>
 export const updateUserRole = (id: string, role: string) =>
   apiPut<{ id: string; role: string }>(`/api/admin/users/${id}/role`, { role });
 
-export const getAdminStudents = (search?: string, page = 1, pageSize = 50) =>
-  apiGet<any>(`/api/admin/students?page=${page}&pageSize=${pageSize}${search ? `&search=${encodeURIComponent(search)}` : ""}`, { items: [], totalCount: 0, page: 1, pageSize: 50, totalPages: 0 });
+export const getAdminStudents = (search?: string, courseId?: string, status?: string, page = 1, pageSize = 50) => {
+  const params = new URLSearchParams();
+  params.append("page", page.toString());
+  params.append("pageSize", pageSize.toString());
+  if (search) params.append("search", search);
+  if (courseId) params.append("courseId", courseId);
+  if (status) params.append("status", status);
+  return apiGet<any>(`/api/admin/students?${params.toString()}`, { items: [], totalCount: 0, page: 1, pageSize: 50, totalPages: 0 });
+};
 
 export const getAdminEnrollments = (page = 1, pageSize = 50) =>
   apiGet<any>(`/api/admin/enrollments?page=${page}&pageSize=${pageSize}`, { items: [], totalCount: 0, page: 1, pageSize: 50, totalPages: 0 });
+
+export const createAdminEnrollment = (data: { studentUserId: string; courseId: string; courseRoundId?: string }) =>
+  apiPost<{ id: string }>("/api/admin/enrollments", data);
+
+export const deleteAdminEnrollment = (id: string) =>
+  apiDelete<void>(`/api/admin/enrollments/${id}`);
 
 export const getAdminAnalytics = () =>
   apiGet<any>("/api/admin/analytics", {
@@ -675,11 +731,14 @@ export const deleteLearningTask = (id: string) =>
 export const deleteQuiz = (id: string) =>
   apiDelete<{ deleted: boolean }>(`/api/admin/quizzes/${id}`);
 
-export const markApplicationPaid = (applicationId: string, data: { paymentMethod: string; paymentReference: string; amountEgp: number }) =>
+export const markApplicationPaid = (applicationId: string, data: any) =>
   apiPost<void>(`/api/applications/${applicationId}/payment`, data);
 
 export const uploadPaymentReceipt = (applicationId: string, data: { receiptUrl: string; paymentMethod: string }) =>
-  apiPost<{ success: boolean }>(`/api/applications/${applicationId}/payment-receipt`, data);
+  apiPost<void>(`/api/applications/${applicationId}/payment-receipt`, data);
+
+export const uploadOrderReceipt = (orderId: string, data: { receiptUrl: string; paymentMethod: string }) =>
+  apiPost<void>(`/api/payments/orders/${orderId}/payment-receipt`, data);
 
 export const getPendingPayments = () =>
   apiGet<any[]>(`/api/applications/pending-payments`, []);

@@ -166,6 +166,9 @@ public class ApplicationService(
         application.ReviewedAt = DateTimeOffset.UtcNow;
         application.AcceptedAt = DateTimeOffset.UtcNow;
 
+        var price = application.Course?.PriceEgp ?? 0;
+        var shouldActivate = price == 0 || application.PaymentCompleted;
+
         var enrollment = await db.Enrollments.FirstOrDefaultAsync(x => x.CourseId == application.CourseId && x.StudentUserId == application.StudentUserId, cancellationToken);
         if (enrollment is null)
         {
@@ -175,15 +178,20 @@ public class ApplicationService(
                 CohortId = application.CohortId,
                 StudentUserId = application.StudentUserId,
                 EnrollmentOrderId = application.EnrollmentOrderId,
-                EnrollmentStatus = EnrollmentStatus.Active,
-                Status = "active",
-                UnitPriceEgp = application.Course?.PriceEgp ?? 0,
-                FinalPriceEgp = application.Course?.PriceEgp ?? 0
+                EnrollmentStatus = shouldActivate ? EnrollmentStatus.Active : EnrollmentStatus.Pending,
+                Status = shouldActivate ? "active" : "pending_payment",
+                UnitPriceEgp = price,
+                FinalPriceEgp = price
             };
             db.Enrollments.Add(enrollment);
         }
+        else if (shouldActivate)
+        {
+            enrollment.EnrollmentStatus = EnrollmentStatus.Active;
+            enrollment.Status = "active";
+        }
 
-        if (application.CohortId.HasValue)
+        if (shouldActivate && application.CohortId.HasValue)
         {
             var cohort = await db.Cohorts
                 .Include(c => c.CohortEnrollments)

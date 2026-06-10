@@ -56,6 +56,7 @@ public record AdminCourseDto(
     bool IsActive,
     bool IsFeatured,
     bool IsDeleted,
+    int SessionsCount,
     IReadOnlyList<CourseModuleDto> Modules);
 
 public record AdminCourseCreateRequest(
@@ -94,7 +95,9 @@ public record AdminRoundCreateRequest(
     int MaxStudents,
     bool IsEnrollmentOpen,
     bool AutoAcceptPaidApplications,
-    bool RequireEngineerApproval);
+    bool RequireEngineerApproval,
+    Guid? EngineerUserId = null,
+    Guid? CtaUserId = null);
 
 public record UpdateRoundWeekRequest(
     string? WeekTitle,

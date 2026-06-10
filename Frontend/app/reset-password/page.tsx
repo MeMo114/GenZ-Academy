@@ -51,7 +51,7 @@ function ResetPasswordForm() {
     try {
       await apiPost("/api/auth/reset-password", {
         userId,
-        token,
+        token: token.replace(/ /g, "+"), // Restore plus signs encoded as spaces by browser
         newPassword: password
       });
       setSubmitted(true);

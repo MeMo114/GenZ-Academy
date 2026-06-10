@@ -25,7 +25,7 @@ export function validateEnv() {
 }
 
 export const env = {
-  apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || "http://localhost:5079",
+  apiBaseUrl: process.env.NEXT_PUBLIC_API_BASE_URL || "http://genz.runasp.net",
   sentryDsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
   isProduction: process.env.NODE_ENV === "production",
   isDevelopment: process.env.NODE_ENV === "development",

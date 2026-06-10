@@ -6,10 +6,10 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   getAdminRound, getAdminRounds, updateRound, updateRoundZoom, generateRoundZoom,
   createAdminTask, createAdminQuiz, addAdminQuizQuestion,
-  createRoundWeek, getApplicationDetails, updateCourseStep, uploadCourseMaterial,
+  createRoundWeek, updateCourseStep, uploadCourseMaterial,
   deleteRoundWeek, deleteCourseMaterial, deleteLearningTask, deleteQuiz,
   getAdminRoundWeeks, getAdminCourseMaterials, getAdminRoundTasks, getAdminRoundQuizzes, getAdminRoundStudents,
-  notifyRoundStudents
+  notifyRoundStudents, getApplicationDetails, deleteAdminEnrollment
 } from "@/lib/api";
 import type { RoundDetail, WeekItem, MaterialItem, StudentItem, QuizItem, TaskItem, CourseRound } from "@/lib/types";
 import Link from "next/link";
@@ -23,8 +23,9 @@ import {
   ChatsCircle, Terminal, Cpu, Plus, GameController, ClipboardText, Eye,
   Broadcast, Play, Stop, DotsNine, ListBullets, CaretRight, CaretDown,
   BookmarkSimple, Slideshow, Headphones, Sparkle, Question, Target, Flag,
-  CopySimple, Bell
+  CopySimple, Bell, UserPlus, Trash
 } from "@phosphor-icons/react";
+import ManualEnrollmentModal from "@/components/ManualEnrollmentModal";
 
 type Tab = "overview" | "sessions" | "materials" | "zoom" | "students" | "room" | "tasks";
 
@@ -206,9 +207,9 @@ export default function RoundRoomPage() {
             {activeTab === "overview" && <OverviewTab round={round} onRefresh={load} />}
             {activeTab === "sessions" && <SessionsTab round={round} onRefresh={load} />}
             {activeTab === "materials" && <MaterialsTab round={round} onRefresh={load} />}
-            {activeTab === "tasks" && <TasksTab round={round} onRefresh={load} />}
-            {activeTab === "zoom" && <ZoomTab round={round} onRefresh={load} />}
-            {activeTab === "students" && <StudentsTab round={round} />}
+          {activeTab === "zoom" && <ZoomTab round={round} onRefresh={load} />}
+          {activeTab === "students" && <StudentsTab round={round} onRefresh={load} />}
+          {activeTab === "tasks" && <TasksTab round={round} onRefresh={load} />}
           </motion.div>
         </AnimatePresence>
 
@@ -1012,12 +1013,25 @@ function ZoomTab({ round, onRefresh }: { round: RoundDetail; onRefresh: () => vo
   );
 }
 
-function StudentsTab({ round }: { round: RoundDetail }) {
+function StudentsTab({ round, onRefresh }: { round: RoundDetail; onRefresh: () => void }) {
   const students = round.students || [];
   const [selectedApp, setSelectedApp] = useState<string | null>(null);
   const [appDetails, setAppDetails] = useState<any>(null);
   const [loadingApp, setLoadingApp] = useState(false);
+  const [showEnrollModal, setShowEnrollModal] = useState(false);
   const { toast } = useToast();
+
+  const handleRemove = async (enrollmentId: string) => {
+    if (!confirm("Are you sure you want to remove this student from the round? They will lose access to the course room.")) return;
+    
+    try {
+      await deleteAdminEnrollment(enrollmentId);
+      toast("Student removed successfully", "success");
+      onRefresh();
+    } catch (err: any) {
+      toast(err.message || "Failed to remove student", "error");
+    }
+  };
 
   const handleViewAnswers = async (appId: string) => {
     setSelectedApp(appId);
@@ -1040,7 +1054,16 @@ function StudentsTab({ round }: { round: RoundDetail }) {
             <h2 className="text-xl font-display font-bold text-zinc-900">Enrolled Students</h2>
             <p className="text-sm text-zinc-500 mt-1">{students.length} student{students.length !== 1 ? 's' : ''} enrolled</p>
           </div>
-          <span className="px-3 py-1.5 bg-zinc-100 text-zinc-700 rounded-full text-xs font-bold">{round.currentStudents} / {round.maxStudents}</span>
+          <div className="flex items-center gap-3">
+            <button 
+              onClick={() => setShowEnrollModal(true)}
+              className="px-4 py-2 bg-zinc-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors flex items-center gap-2"
+            >
+              <UserPlus size={16} weight="bold" />
+              Add Student
+            </button>
+            <span className="px-3 py-1.5 bg-zinc-100 text-zinc-700 rounded-full text-xs font-bold">{round.currentStudents} / {round.maxStudents}</span>
+          </div>
         </div>
       </div>
       {students.length === 0 ? (
@@ -1068,6 +1091,13 @@ function StudentsTab({ round }: { round: RoundDetail }) {
                     title="View Application Answers">
                     <Eye size={16} weight="bold" />
                     <span>View Answers</span>
+                  </button>
+                )}
+                {s.enrollmentId && (
+                  <button onClick={() => handleRemove(s.enrollmentId!)}
+                    className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-xl transition-all"
+                    title="Remove Student from Round">
+                    <Trash size={16} weight="bold" />
                   </button>
                 )}
                 <div className="text-[10px] text-zinc-400 font-bold uppercase tracking-widest">
@@ -1152,6 +1182,14 @@ function StudentsTab({ round }: { round: RoundDetail }) {
           </div>
         </div>
       )}
+
+      <ManualEnrollmentModal 
+        isOpen={showEnrollModal}
+        onClose={() => setShowEnrollModal(false)}
+        onSuccess={() => onRefresh()}
+        initialCourseId={round.courseId}
+        initialRoundId={round.id}
+      />
     </div>
   );
 }

@@ -72,15 +72,14 @@ const ctaNav = [
 
 const adminNav = [
   { href: "/admin", icon: SquaresFour, label: "Overview" },
+  { href: "/admin/users", icon: UsersFour, label: "Users" },
   { href: "/admin/applications", icon: ClipboardText, label: "Applications" },
   { href: "/admin/enrollments", icon: CheckSquare, label: "Enrollments" },
-  { href: "/admin/students", icon: Student, label: "Students" },
   { href: "/admin/courses", icon: Folder, label: "Courses" },
   { href: "/admin/sessions", icon: CalendarCheck, label: "Sessions" },
-  { href: "/admin/schools", icon: Buildings, label: "Schools" },
   { href: "/admin/payments", icon: CurrencyDollar, label: "Payments" },
   { href: "/admin/announcements", icon: MegaphoneSimple, label: "Announce" },
-  { href: "/admin/team", icon: UsersFour, label: "Team" },
+
   { href: "/admin/analytics", icon: ChartBar, label: "Analytics" },
 ];
 

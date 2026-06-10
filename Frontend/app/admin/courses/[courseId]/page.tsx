@@ -68,6 +68,8 @@ export default function CourseDetailPage() {
   const [editing, setEditing] = useState<CourseRound | null>(null);
   const [saving, setSaving] = useState(false);
   const [allStudents, setAllStudents] = useState<any[]>([]);
+  const [engineers, setEngineers] = useState<any[]>([]);
+  const [ctas, setCtas] = useState<any[]>([]);
   const { toast } = useToast();
 
   const [form, setForm] = useState({
@@ -75,21 +77,26 @@ export default function CourseDetailPage() {
     startDate: new Date().toISOString().split('T')[0],
     maxStudents: 20, isEnrollmentOpen: true,
     autoAcceptPaidApplications: false, requireEngineerApproval: true,
+    engineerUserId: "" as string | null, ctaUserId: "" as string | null
   });
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [courseData, allCourses, foundRounds, foundMaterials] = await Promise.all([
+      const [courseData, allCourses, foundRounds, foundMaterials, engineerUsers, ctaUsers] = await Promise.all([
         getAdminCourse(courseId),
         getAdminCourses(),
         getAdminRounds(courseId),
         getAdminCourseMaterials(courseId),
+        import("@/lib/api").then(m => m.getAdminUsers("engineer")),
+        import("@/lib/api").then(m => m.getAdminUsers("cta")),
       ]);
       setCourses(allCourses);
       setCourse(courseData as AdminCourseDetail);
       setRounds(foundRounds);
       setMaterials(foundMaterials);
+      setEngineers(engineerUsers);
+      setCtas(ctaUsers);
 
       const allSessions: any[] = [];
       const allStudentsMap = new Map<string, any>();
@@ -120,10 +127,13 @@ export default function CourseDetailPage() {
   const openCreate = () => {
     setEditing(null);
     setForm({
-      name: "", slug: "",
+      name: "", 
+      slug: course ? `${course.slug}-round-${(rounds.length + 1)}` : "",
       startDate: new Date().toISOString().split('T')[0],
       maxStudents: 20, isEnrollmentOpen: true,
       autoAcceptPaidApplications: false, requireEngineerApproval: true,
+      engineerUserId: "",
+      ctaUserId: ""
     });
     setShowForm(true);
   };
@@ -138,6 +148,8 @@ export default function CourseDetailPage() {
       isEnrollmentOpen: round.isEnrollmentOpen,
       autoAcceptPaidApplications: round.autoAcceptPaidApplications || false,
       requireEngineerApproval: round.requireEngineerApproval || true,
+      engineerUserId: round.engineerUserId || "",
+      ctaUserId: round.ctaUserId || ""
     });
     setShowForm(true);
   };
@@ -149,14 +161,21 @@ export default function CourseDetailPage() {
     }
     setSaving(true);
     try {
+      const payload = {
+        ...form,
+        courseId: course?.id || courseId,
+        engineerUserId: form.engineerUserId || null,
+        ctaUserId: form.ctaUserId || null
+      };
+
       if (editing) {
-        await updateRound(editing.id, { ...form, courseId });
+        await updateRound(editing.id, payload);
         toast("Round updated", "success");
       } else {
-        await createAdminRound({ ...form, courseId });
+        await createAdminRound(payload);
         toast("Round created", "success");
       }
-      setRounds(await getAdminRounds(courseId));
+      setRounds(await getAdminRounds(course?.id || courseId));
       setShowForm(false);
     } catch (e: any) {
       toast(e.message || "Failed to save round", "error");
@@ -192,7 +211,7 @@ export default function CourseDetailPage() {
         </div>
         <h2 className="text-2xl font-display font-black text-zinc-900 mb-2">Course Not Found</h2>
         <p className="text-sm text-zinc-500 mb-6">This course doesn&apos;t exist or you don&apos;t have access to it.</p>
-        <Link href="/admin/courses" className="inline-flex items-center gap-2 px-6 py-3 bg-zinc-900 text-white rounded-xl font-bold text-sm hover:bg-black transition-colors shadow-lg">
+        <Link href="/admin/courses" className="inline-flex items-center gap-2 px-6 py-3 bg-[#ff1a1a] text-white rounded-xl font-bold text-sm hover:bg-[#ff4d4d] transition-colors shadow-lg">
           <ArrowLeft size={16} weight="bold" /> Back to Courses
         </Link>
       </div>
@@ -257,7 +276,7 @@ export default function CourseDetailPage() {
                 <p className="text-sm text-zinc-500 font-medium">{course!.subtitle || course!.slug} &middot; {course!.level} &middot; Phase {course!.phase}{course!.isActive ? '' : ' · Archived'}</p>
               </div>
             </div>
-            <button onClick={openCreate} className="w-full sm:w-auto bg-zinc-900 text-white px-6 py-3 rounded-full font-bold text-sm hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-lg">
+            <button onClick={openCreate} className="w-full sm:w-auto bg-[#ff1a1a] text-white px-6 py-3 rounded-full font-bold text-sm hover:bg-[#ff4d4d] transition-colors flex items-center justify-center gap-2 shadow-lg">
               <Plus size={18} weight="bold" /> New Round
             </button>
           </div>
@@ -270,7 +289,7 @@ export default function CourseDetailPage() {
               <button key={t.id} onClick={() => setActiveTab(t.id)}
                 className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold transition-all ${
                   activeTab === t.id
-                    ? "bg-zinc-900 text-white shadow-lg"
+                    ? "bg-[#ff1a1a] text-white shadow-lg"
                     : "text-zinc-500 hover:text-zinc-900 hover:bg-zinc-50"
                 }`}
               >
@@ -331,30 +350,30 @@ export default function CourseDetailPage() {
                   <div className="bg-white rounded-[2.5rem] p-6 sm:p-8 border border-black/5 shadow-sm">
                     <h3 className="text-lg font-black text-zinc-900 mb-4">Course Information</h3>
                     <div className="space-y-4 text-sm">
-                      <div className="grid grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Slug</div>
-                          <div className="font-mono font-bold text-zinc-700">{course!.slug}</div>
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                        <div className="bg-zinc-50 rounded-2xl p-4 border border-black/5">
+                          <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Pricing</div>
+                          <div className="text-lg font-black text-zinc-900">{course!.priceEgp.toLocaleString()} EGP</div>
                         </div>
-                        <div>
+                        <div className="bg-zinc-50 rounded-2xl p-4 border border-black/5">
                           <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Level</div>
-                          <div className="font-bold text-zinc-700">{course!.level}</div>
+                          <div className="text-lg font-black text-zinc-900">{course!.level}</div>
                         </div>
-                        <div>
+                        <div className="bg-zinc-50 rounded-2xl p-4 border border-black/5">
                           <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Phase</div>
-                          <div className="font-bold text-zinc-700">Phase {course!.phase}</div>
+                          <div className="text-lg font-black text-zinc-900">Phase {course!.phase}</div>
                         </div>
-                        <div>
-                          <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Price</div>
-                          <div className="font-bold text-zinc-700">{course!.priceEgp.toLocaleString()} EGP</div>
-                        </div>
-                        <div>
+                        <div className="bg-zinc-50 rounded-2xl p-4 border border-black/5">
                           <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Age Range</div>
-                          <div className="font-bold text-zinc-700">{course!.minimumAge}{course!.maximumAge ? ` - ${course!.maximumAge}` : '+'} years</div>
+                          <div className="text-lg font-black text-zinc-900">{course!.minimumAge}{course!.maximumAge ? `-${course!.maximumAge}` : '+'}y</div>
                         </div>
-                        <div>
+                        <div className="bg-zinc-50 rounded-2xl p-4 border border-black/5">
+                          <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Slug</div>
+                          <div className="text-lg font-black text-zinc-900 font-mono">{course!.slug}</div>
+                        </div>
+                        <div className="bg-zinc-50 rounded-2xl p-4 border border-black/5">
                           <div className="text-[10px] font-black text-zinc-400 uppercase tracking-widest mb-1">Sort Order</div>
-                          <div className="font-bold text-zinc-700">{course!.sortOrder}</div>
+                          <div className="text-lg font-black text-zinc-900">{course!.sortOrder}</div>
                         </div>
                       </div>
                       <div className="pt-3 border-t border-black/5">
@@ -378,7 +397,7 @@ export default function CourseDetailPage() {
                         title="No rounds yet"
                         description="Create the first round to start enrolling students."
                         action={
-                          <button onClick={openCreate} className="px-4 py-2 bg-zinc-900 text-white rounded-xl text-xs font-bold hover:bg-black transition-colors">
+                          <button onClick={openCreate} className="px-4 py-2 bg-[#ff1a1a] text-white rounded-xl text-xs font-bold hover:bg-[#ff4d4d] transition-colors">
                             <Plus size={14} weight="bold" className="inline mr-1" /> Create Round
                           </button>
                         }
@@ -421,7 +440,7 @@ export default function CourseDetailPage() {
                   title="No rounds yet"
                   description="Create the first round for this course to start enrolling students."
                   action={
-                    <button onClick={openCreate} className="px-5 py-2.5 bg-zinc-900 text-white rounded-full text-sm font-bold hover:bg-zinc-800 transition-colors">
+                    <button onClick={openCreate} className="px-5 py-2.5 bg-[#ff1a1a] text-white rounded-full text-sm font-bold hover:bg-[#ff4d4d] transition-colors">
                       Create First Round
                     </button>
                   }
@@ -495,7 +514,7 @@ export default function CourseDetailPage() {
                         </div>
                         <Link
                           href={`/admin/courses/${course!.slug || courseId}/rounds/${r.id}`}
-                          className="px-5 py-3 bg-zinc-900 text-white hover:bg-brand rounded-2xl font-black uppercase tracking-wider text-[10px] shadow-md transition-all duration-200 active:scale-[0.98] flex items-center gap-2"
+                          className="px-5 py-3 bg-zinc-900 text-white hover:bg-[#ff1a1a] rounded-2xl font-black uppercase tracking-wider text-[10px] shadow-md transition-all duration-200 active:scale-[0.98] flex items-center gap-2"
                         >
                           Enter Room <ArrowRight size={14} weight="bold" />
                         </Link>
@@ -623,6 +642,26 @@ export default function CourseDetailPage() {
                   <div className="flex flex-col gap-1.5">
                     <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Max Students</label>
                     <input type="number" {...field("maxStudents")} className="w-full px-4 py-3 bg-zinc-50 rounded-xl border border-black/5 font-bold" />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Assigned Engineer</label>
+                    <select {...field("engineerUserId")} className="w-full px-4 py-3 bg-zinc-50 rounded-xl border border-black/5 font-bold text-sm focus:ring-2 focus:ring-black/10 outline-none">
+                      <option value="">No Engineer Assigned</option>
+                      {engineers.map(e => (
+                        <option key={e.id} value={e.id}>{e.displayName}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="flex flex-col gap-1.5">
+                    <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Assigned CTA</label>
+                    <select {...field("ctaUserId")} className="w-full px-4 py-3 bg-zinc-50 rounded-xl border border-black/5 font-bold text-sm focus:ring-2 focus:ring-black/10 outline-none">
+                      <option value="">No CTA Assigned</option>
+                      {ctas.map(c => (
+                        <option key={c.id} value={c.id}>{c.displayName}</option>
+                      ))}
+                    </select>
                   </div>
                 </div>
                 <div className="flex flex-col gap-4 pt-2">

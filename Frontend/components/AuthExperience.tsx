@@ -58,12 +58,16 @@ export function AuthExperience() {
         const returnUrl = params.get("returnUrl");
         
         let destination = "/dashboard";
-        if (!u.profileCompleted) {
+        if (!u.profileCompleted && u.role === "student") {
           destination = "/onboarding";
         } else if (returnUrl && returnUrl.startsWith("/")) {
           destination = returnUrl;
-        } else if (u.role === "admin") {
+        } else if (u.role === "academy_admin" || u.role === "admin") {
           destination = "/admin";
+        } else if (u.role === "engineer") {
+          destination = "/engineer";
+        } else if (u.role === "cta") {
+          destination = "/cta";
         }
         
         window.location.href = `${targetOrigin}${destination}`;
@@ -130,18 +134,25 @@ export function AuthExperience() {
       if (google) {
         try {
           google.accounts.id.initialize({
-            client_id: "1017632556527-l847alsomgr7qsnmfo709alduqvtdbsb.apps.googleusercontent.com",
+            client_id: "256530260039-p3f2572andj8f00nkagfb903patv859p.apps.googleusercontent.com",
             callback: handleGoogleCredentialResponse,
             auto_select: false,
             cancel_on_tap_outside: true,
+            use_fedcm_for_prompt: true, // Explicitly enable FedCM for modern browsers
           });
 
-          // Trigger One Tap if possible for high-end luxury feel
-          google.accounts.id.prompt((notification: any) => {
-            if (notification.isNotDisplayed()) {
-              console.log("Google One Tap: not displayed", notification.getNotDisplayedReason());
-            }
-          });
+          // Only trigger automatic One Tap if we're not in an iframe (like IDE preview)
+          // FedCM and One Tap often fail or cause abort errors in sandboxed environments
+          const isIframe = window.self !== window.top;
+          if (!isIframe) {
+            google.accounts.id.prompt((notification: any) => {
+              if (notification.isNotDisplayed()) {
+                console.log("Google One Tap: not displayed", notification.getNotDisplayedReason());
+              }
+            });
+          } else {
+            console.log("Google One Tap: Suppressed in iframe/preview environment to prevent FedCM abort errors.");
+          }
 
           setGoogleInitialized(true);
         } catch (err) {

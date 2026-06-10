@@ -1,21 +1,43 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAdminEnrollments } from "@/lib/api";
+import { getAdminEnrollments, deleteAdminEnrollment } from "@/lib/api";
 import Link from "next/link";
-import { Funnel, MagnifyingGlass, ArrowLeft, User, FileCsv } from "@phosphor-icons/react";
+import { Funnel, MagnifyingGlass, ArrowLeft, User, FileCsv, UserPlus, Trash } from "@phosphor-icons/react";
 import { Table, type Column } from "@/components/ui/Table";
-import { EmptyState } from "@/components/ui/EmptyState";
+import { useToast } from "@/lib/toast-context";
+import ManualEnrollmentModal from "@/components/ManualEnrollmentModal";
 import { SkeletonTable } from "@/components/ui/Skeleton";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { exportToCsv } from "@/lib/csv-export";
 
 export default function AdminEnrollmentsPage() {
   const [enrollments, setEnrollments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showEnrollModal, setShowEnrollModal] = useState(false);
+  const { toast } = useToast();
+
+  const fetchEnrollments = () => {
+    setLoading(true);
+    getAdminEnrollments().then(data => setEnrollments(data.items ?? [])).finally(() => setLoading(false));
+  };
 
   useEffect(() => {
-    getAdminEnrollments().then(data => setEnrollments(data.items ?? [])).finally(() => setLoading(false));
+    fetchEnrollments();
   }, []);
+
+  const handleRemove = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!confirm("Are you sure you want to remove this enrollment? The student will lose access to the course room.")) return;
+
+    try {
+      await deleteAdminEnrollment(id);
+      toast("Enrollment removed successfully", "success");
+      fetchEnrollments();
+    } catch (err: any) {
+      toast(err.message || "Failed to remove enrollment", "error");
+    }
+  };
 
   const columns: Column<any>[] = [
     { key: "studentName", label: "Student", sortable: true, render: (r) => <span className="font-bold text-zinc-900">{r.studentName}</span> },
@@ -33,6 +55,20 @@ export default function AdminEnrollmentsPage() {
       ),
     },
     { key: "createdAt", label: "Date", sortable: true, render: (r) => <span className="text-zinc-500 text-sm">{r.createdAt ? new Date(r.createdAt).toLocaleDateString() : '-'}</span> },
+    {
+      key: "id",
+      label: "Actions",
+      width: "80px",
+      render: (r) => (
+        <button 
+          onClick={(e) => handleRemove(e, r.id)}
+          className="p-2 text-zinc-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-all"
+          title="Remove Enrollment"
+        >
+          <Trash size={18} weight="bold" />
+        </button>
+      )
+    }
   ];
 
   return (
@@ -45,12 +81,21 @@ export default function AdminEnrollmentsPage() {
           <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl font-black text-zinc-900 tracking-tight mb-2">Enrollments</h1>
           <p className="text-zinc-500 font-medium">Manage and review student applications.</p>
         </div>
-        {enrollments.length > 0 && (
-          <button onClick={() => exportToCsv(enrollments.map((e: any) => ({ Student: e.studentName, Email: e.studentEmail, Course: e.courseName, Price: e.finalPriceEgp, Status: e.enrollmentStatus, Date: e.createdAt })), "enrollments")}
-            className="px-5 py-3 bg-zinc-50 border border-black/10 rounded-2xl font-bold text-sm text-zinc-700 flex items-center gap-2 hover:bg-zinc-100 transition-colors micro-hover">
-            <FileCsv size={18} weight="bold" /> Export CSV
+        <div className="flex items-center gap-3">
+          {enrollments.length > 0 && (
+            <button onClick={() => exportToCsv(enrollments.map((e: any) => ({ Student: e.studentName, Email: e.studentEmail, Course: e.courseName, Price: e.finalPriceEgp, Status: e.enrollmentStatus, Date: e.createdAt })), "enrollments")}
+              className="px-5 py-3 bg-zinc-50 border border-black/10 rounded-2xl font-bold text-sm text-zinc-700 flex items-center gap-2 hover:bg-zinc-100 transition-colors micro-hover">
+              <FileCsv size={18} weight="bold" /> Export CSV
+            </button>
+          )}
+          <button 
+            onClick={() => setShowEnrollModal(true)}
+            className="px-5 py-3 bg-zinc-900 text-white rounded-2xl font-bold text-sm flex items-center gap-2 hover:bg-black transition-colors micro-hover shadow-xl shadow-zinc-900/10"
+          >
+            <UserPlus size={18} weight="bold" />
+            Add Enrollment
           </button>
-        )}
+        </div>
       </div>
 
       <div className="bg-white rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-sm border border-black/5">
@@ -79,6 +124,12 @@ export default function AdminEnrollmentsPage() {
           </>
         )}
       </div>
+
+      <ManualEnrollmentModal 
+        isOpen={showEnrollModal}
+        onClose={() => setShowEnrollModal(false)}
+        onSuccess={() => fetchEnrollments()}
+      />
     </div>
   );
 }

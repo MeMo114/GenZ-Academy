@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { getAdminCourses, createAdminCourse, updateAdminCourse, deleteAdminCourse, getAdminQuestions, createAdminQuestion, deleteAdminQuestion, getAdminRounds, createAdminRound } from "@/lib/api";
+import { useRouter } from "next/navigation";
+import { getAdminCourses, createAdminCourse, updateAdminCourse, deleteAdminCourse, getAdminQuestions, createAdminQuestion, deleteAdminQuestion, getAdminRounds, createAdminRound, getAdminUsers } from "@/lib/api";
 import type { AdminCourse } from "@/lib/types";
 import Link from "next/link";
 import { useToast } from "@/lib/toast-context";
 import { PremiumSwitch } from "@/components/PremiumControls";
-import { Folder, Plus, ArrowLeft, Trash, PencilSimple, X, FloppyDisk, CheckCircle, ArrowRight, MagnifyingGlass } from "@phosphor-icons/react";
+import { Folder, Plus, ArrowLeft, Trash, PencilSimple, X, FloppyDisk, CheckCircle, ArrowRight, MagnifyingGlass, Archive, Eye, ListBullets, Funnel } from "@phosphor-icons/react";
 import { uploadToCloudinary } from "@/lib/cloudinary";
 import { CourseIcon } from "@/components/IconMapper";
+import { CourseCard } from "./CourseCard";
 
 type WizardStep = 1 | 2 | 3;
 
 export default function AdminCoursesPage() {
+  const router = useRouter();
   const [courses, setCourses] = useState<AdminCourse[]>([]);
   const [loading, setLoading] = useState(true);
   const [showWizard, setShowWizard] = useState(false);
@@ -20,6 +23,7 @@ export default function AdminCoursesPage() {
   const [saving, setSaving] = useState(false);
   const [step, setStep] = useState<WizardStep>(1);
   const [createdCourseId, setCreatedCourseId] = useState<string | null>(null);
+  const [isPretestOnly, setIsPretestOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [filterLevel, setFilterLevel] = useState("all");
   const [filterStatus, setFilterStatus] = useState("all");
@@ -67,15 +71,28 @@ export default function AdminCoursesPage() {
     startDate: new Date().toISOString().split('T')[0],
     maxStudents: 20, isEnrollmentOpen: true,
     autoAcceptPaidApplications: false, requireEngineerApproval: true,
+    engineerUserId: "" as string | null, ctaUserId: "" as string | null
   });
 
+  const [engineers, setEngineers] = useState<any[]>([]);
+  const [ctas, setCtas] = useState<any[]>([]);
+
   useEffect(() => {
-    getAdminCourses().then(setCourses).finally(() => setLoading(false));
+    Promise.all([
+      getAdminCourses(),
+      getAdminUsers("engineer"),
+      getAdminUsers("cta")
+    ]).then(([c, engs, ctaUsers]) => {
+      setCourses(c);
+      setEngineers(engs);
+      setCtas(ctaUsers);
+    }).finally(() => setLoading(false));
   }, []);
 
   const resetWizard = () => {
     setStep(1);
     setCreatedCourseId(null);
+    setIsPretestOnly(false);
     setForm({
       title: "", slug: "", subtitle: "", description: "", shortDescription: "",
       outcome: "", priceEgp: 0, coverImageUrl: "", imageUrl: "", iconName: "", colorHex: "",
@@ -91,6 +108,7 @@ export default function AdminCoursesPage() {
       startDate: new Date().toISOString().split('T')[0],
       maxStudents: 20, isEnrollmentOpen: true,
       autoAcceptPaidApplications: false, requireEngineerApproval: true,
+      engineerUserId: "", ctaUserId: ""
     });
   };
 
@@ -102,6 +120,7 @@ export default function AdminCoursesPage() {
 
   const openEdit = (course: AdminCourse) => {
     setEditing(course);
+    setIsPretestOnly(false);
     setForm({
       title: course.title, slug: course.slug, subtitle: course.subtitle || "",
       description: course.description || "", shortDescription: course.shortDescription || "",
@@ -117,6 +136,14 @@ export default function AdminCoursesPage() {
     setStep(1);
     getAdminQuestions(course.id).then(setQuestions).catch(() => setQuestions([]));
     setRoundForm(prev => ({ ...prev, courseId: course.id }));
+    setShowWizard(true);
+  };
+
+  const openPretest = (course: AdminCourse) => {
+    setEditing(course);
+    setIsPretestOnly(true);
+    setStep(2);
+    getAdminQuestions(course.id).then(setQuestions).catch(() => setQuestions([]));
     setShowWizard(true);
   };
 
@@ -155,13 +182,16 @@ export default function AdminCoursesPage() {
     try {
       if (editing) {
         await updateAdminCourse(editing.id, payload);
-        setRoundForm(prev => ({ ...prev, courseId: editing.id }));
         toast("Course updated successfully!", "success");
-        setStep(2);
+        setShowWizard(false);
       } else {
         const result = await createAdminCourse(payload);
         setCreatedCourseId(result.id);
-        setRoundForm(prev => ({ ...prev, courseId: result.id }));
+        setRoundForm(prev => ({ 
+          ...prev, 
+          courseId: result.id,
+          slug: `${form.slug}-round-1`
+        }));
         toast("Course created! Now add questions.", "success");
         setStep(2);
       }
@@ -238,7 +268,13 @@ export default function AdminCoursesPage() {
 
     setSaving(true);
     try {
-      await createAdminRound({ ...roundForm, courseId: targetCourseId });
+      const payload = {
+        ...roundForm,
+        courseId: targetCourseId,
+        engineerUserId: roundForm.engineerUserId || null,
+        ctaUserId: roundForm.ctaUserId || null
+      };
+      await createAdminRound(payload);
       toast("Round created for this course!", "success");
       setShowWizard(false);
       setCourses(await getAdminCourses());
@@ -250,150 +286,168 @@ export default function AdminCoursesPage() {
   const field = (key: keyof typeof form) => ({
     value: (form[key] ?? "") as string | number,
     onChange: (e: any) => {
-      const val = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+      let val = e.target.type === "checkbox" ? e.target.checked : e.target.value;
+      if (e.target.type === "number") {
+        val = val === "" ? 0 : Number(val);
+      }
       setForm(prev => ({ ...prev, [key]: val }));
     }
   });
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Archive this course?")) return;
+    if (!confirm("Archive this course? It will be hidden from students but preserved in the records.")) return;
     try {
       await deleteAdminCourse(id);
-      setCourses(courses.filter(c => c.id !== id));
-      toast("Course archived", "success");
-    } catch (e: any) { toast(e.message || "Failed", "error"); }
+      const updated = await getAdminCourses();
+      setCourses(updated);
+      toast("Course archived successfully", "success");
+    } catch (e: any) { 
+      toast(e.message || "Failed to archive course", "error"); 
+    }
   };
 
   if (loading) return <div className="page-loader"><div className="spinner" /></div>;
 
-  const steps = editing ? [{ num: 1, label: "Edit Course" }] : [
+  const steps = isPretestOnly ? [{ num: 2, label: "Manage Pretest" }] : (editing ? [{ num: 1, label: "Edit Course" }] : [
     { num: 1, label: "Course Data" },
     { num: 2, label: "Questions" },
     { num: 3, label: "Round" }
-  ];
+  ]);
 
   return (
-    <div className="w-full px-4 sm:px-6 lg:px-12 pt-4 sm:pt-6 pb-24">
-      <div className="mb-6 sm:mb-8 flex flex-col md:flex-row md:items-center justify-between gap-4">
+    <div className="w-full px-4 sm:px-6 lg:px-12 pt-8 sm:pt-10 pb-24 max-w-[1600px] mx-auto">
+      <div className="mb-12 flex flex-col md:flex-row md:items-end justify-between gap-6 border-b border-black/[0.03] pb-10">
         <div>
-          <Link href="/admin" className="text-brand text-xs font-black uppercase tracking-[0.2em] mb-3 sm:mb-4 flex items-center gap-2 hover:underline">
-            <ArrowLeft size={14} weight="bold" /> Back to Dashboard
-          </Link>
-          <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl font-black text-zinc-900 tracking-tight mb-2">Course Management</h1>
-          <p className="text-zinc-500 font-medium">Create and edit academy courses with full setup wizard.</p>
+          <div className="flex items-center gap-3 mb-2">
+            <div className="w-8 h-8 rounded-lg bg-zinc-900 flex items-center justify-center text-white">
+              <Folder size={18} weight="bold" />
+            </div>
+            <span className="text-[10px] font-black uppercase tracking-[0.3em] text-zinc-400">GenZ Academy Admin</span>
+          </div>
+          <h1 className="font-display text-4xl sm:text-5xl font-black text-zinc-900 tracking-tight">
+            Curriculum <span className="text-red-600">Architect</span>
+          </h1>
+          <p className="mt-2 text-zinc-500 font-medium text-sm">Design, manage, and scale technical courses for the next generation.</p>
         </div>
-        <button onClick={openCreate} className="w-full sm:w-auto bg-zinc-900 text-white px-6 py-3 rounded-full font-bold text-sm hover:bg-black transition-colors flex items-center justify-center gap-2 shadow-lg">
-          <Plus size={18} weight="bold" /> New Course
+        <button 
+          onClick={openCreate} 
+          className="group relative inline-flex items-center justify-center gap-3 bg-zinc-900 text-white px-8 py-4.5 rounded-[1.25rem] font-black text-xs uppercase tracking-widest hover:bg-red-600 transition-all duration-500 shadow-[0_20px_40px_-12px_rgba(0,0,0,0.3)] active:scale-95 overflow-hidden"
+        >
+          <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white/10 to-transparent -translate-x-full group-hover:translate-x-full transition-transform duration-1000" />
+          <Plus size={20} weight="bold" className="group-hover:rotate-90 transition-transform duration-500" /> 
+          <span>Create New Course</span>
         </button>
       </div>
 
-      {/* Stats & Filter Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6">
-        <div className="bg-white rounded-2xl p-4 border border-black/5 shadow-sm">
-          <div className="text-2xl font-black text-zinc-900 font-mono">{courses.length}</div>
-          <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Total Courses</div>
+      {/* Stats Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-10">
+        <div className="bg-white/70 backdrop-blur-xl rounded-[2rem] p-6 border border-white shadow-[0_8px_32px_rgba(0,0,0,0.04)] flex items-center gap-5 group hover:shadow-xl hover:-translate-y-1 transition-all duration-500">
+          <div className="w-14 h-14 rounded-2xl bg-red-500/10 flex items-center justify-center text-red-600 group-hover:scale-110 group-hover:bg-red-500 group-hover:text-white transition-all duration-500 shadow-inner">
+            <ListBullets size={28} weight="bold" />
+          </div>
+          <div>
+            <div className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-1">Total Courses</div>
+            <div className="text-3xl font-display font-black text-zinc-900 leading-none">{courses.length}</div>
+          </div>
         </div>
-        <div className="bg-white rounded-2xl p-4 border border-black/5 shadow-sm">
-          <div className="text-2xl font-black text-emerald-600 font-mono">{activeCount}</div>
-          <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Active</div>
+        
+        <div className="bg-white/70 backdrop-blur-xl rounded-[2rem] p-6 border border-white shadow-[0_8px_32px_rgba(0,0,0,0.04)] flex items-center gap-5 group hover:shadow-xl hover:-translate-y-1 transition-all duration-500">
+          <div className="w-14 h-14 rounded-2xl bg-emerald-500/10 flex items-center justify-center text-emerald-600 group-hover:scale-110 group-hover:bg-emerald-500 group-hover:text-white transition-all duration-500 shadow-inner">
+            <CheckCircle size={28} weight="bold" />
+          </div>
+          <div>
+            <div className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-1">Active</div>
+            <div className="text-3xl font-display font-black text-zinc-900 leading-none">{activeCount}</div>
+          </div>
         </div>
-        <div className="bg-white rounded-2xl p-4 border border-black/5 shadow-sm">
-          <div className="text-2xl font-black text-zinc-400 font-mono">{archivedCount}</div>
-          <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Archived</div>
+
+        <div className="bg-white/70 backdrop-blur-xl rounded-[2rem] p-6 border border-white shadow-[0_8px_32px_rgba(0,0,0,0.04)] flex items-center gap-5 group hover:shadow-xl hover:-translate-y-1 transition-all duration-500">
+          <div className="w-14 h-14 rounded-2xl bg-amber-500/10 flex items-center justify-center text-amber-600 group-hover:scale-110 group-hover:bg-amber-500 group-hover:text-white transition-all duration-500 shadow-inner">
+            <Archive size={28} weight="bold" />
+          </div>
+          <div>
+            <div className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-1">Archived</div>
+            <div className="text-3xl font-display font-black text-zinc-900 leading-none">{archivedCount}</div>
+          </div>
         </div>
-        <div className="bg-white rounded-2xl p-4 border border-black/5 shadow-sm">
-          <div className="text-2xl font-black text-brand font-mono">{filteredCourses.length}</div>
-          <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Showing</div>
+
+        <div className="bg-white/70 backdrop-blur-xl rounded-[2rem] p-6 border border-white shadow-[0_8px_32px_rgba(0,0,0,0.04)] flex items-center gap-5 group hover:shadow-xl hover:-translate-y-1 transition-all duration-500">
+          <div className="w-14 h-14 rounded-2xl bg-blue-500/10 flex items-center justify-center text-blue-600 group-hover:scale-110 group-hover:bg-blue-500 group-hover:text-white transition-all duration-500 shadow-inner">
+            <Eye size={28} weight="bold" />
+          </div>
+          <div>
+            <div className="text-[10px] font-black text-zinc-400 uppercase tracking-[0.2em] mb-1">Showing</div>
+            <div className="text-3xl font-display font-black text-zinc-900 leading-none">{filteredCourses.length}</div>
+          </div>
         </div>
       </div>
 
-      <div className="flex flex-wrap gap-2 mb-6">
-        <div className="relative flex-1 min-w-[200px]">
-          <MagnifyingGlass size={14} weight="bold" className="absolute left-4 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
-          <input
+      {/* Modern Search & Filter Bar */}
+      <div className="flex flex-wrap items-center gap-4 mb-12">
+        <div className="relative flex-1 min-w-[320px] group">
+          <div className="absolute left-5 top-1/2 -translate-y-1/2 z-10">
+            <MagnifyingGlass size={22} className="text-zinc-400 group-focus-within:text-red-500 transition-colors" weight="bold" />
+          </div>
+          <input 
+            type="text" 
+            placeholder="Search courses by title, slug..." 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Search courses by title, slug..."
-            className="w-full pl-10 pr-4 py-2.5 bg-white border border-black/5 rounded-xl text-xs font-bold text-zinc-700 outline-none focus:ring-2 focus:ring-black/10 transition-all placeholder:text-zinc-300"
+            className="w-full pl-14 pr-6 py-4.5 bg-white rounded-[1.5rem] border border-black/[0.03] shadow-[0_4px_20px_rgba(0,0,0,0.02)] outline-none focus:ring-4 focus:ring-red-500/5 focus:border-red-500/20 transition-all font-medium text-sm"
           />
         </div>
-        <select value={filterLevel} onChange={(e) => setFilterLevel(e.target.value)}
-          className="px-3 py-2.5 bg-white border border-black/5 rounded-xl text-xs font-bold text-zinc-700 outline-none focus:ring-2 focus:ring-black/10 transition-all cursor-pointer">
-          <option value="all">All Levels</option>
-          <option value="Beginner">Beginner</option>
-          <option value="Creator">Creator</option>
-          <option value="Builder">Builder</option>
-          <option value="Advanced">Advanced</option>
-        </select>
-        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value)}
-          className="px-3 py-2.5 bg-white border border-black/5 rounded-xl text-xs font-bold text-zinc-700 outline-none focus:ring-2 focus:ring-black/10 transition-all cursor-pointer">
-          <option value="all">All Status</option>
-          <option value="active">Active</option>
-          <option value="inactive">Inactive</option>
-          <option value="archived">Archived</option>
-        </select>
-        <select value={filterPhase} onChange={(e) => setFilterPhase(e.target.value)}
-          className="px-3 py-2.5 bg-white border border-black/5 rounded-xl text-xs font-bold text-zinc-700 outline-none focus:ring-2 focus:ring-black/10 transition-all cursor-pointer">
-          <option value="all">All Phases</option>
-          {[1, 2, 3, 4, 5].map(p => <option key={p} value={p.toString()}>Phase {p}</option>)}
-        </select>
-        {(searchQuery || filterLevel !== "all" || filterStatus !== "all" || filterPhase !== "all") && (
-          <button onClick={() => { setSearchQuery(""); setFilterLevel("all"); setFilterStatus("all"); setFilterPhase("all"); }}
-            className="px-3 py-2.5 bg-red-50 border border-red-100 text-red-600 rounded-xl text-xs font-bold hover:bg-red-100 transition-colors flex items-center gap-1.5">
-            <X size={12} weight="bold" /> Clear
-          </button>
-        )}
+        
+        <div className="flex items-center gap-2 p-1.5 bg-white rounded-[1.5rem] border border-black/[0.03] shadow-sm">
+          <select 
+            value={filterLevel} 
+            onChange={(e) => setFilterLevel(e.target.value)}
+            className="px-5 py-3 bg-transparent outline-none font-black text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-900 transition-all appearance-none cursor-pointer min-w-[120px] text-center"
+          >
+            <option value="all">Levels</option>
+            <option value="Beginner">Beginner</option>
+            <option value="Intermediate">Intermediate</option>
+            <option value="Advanced">Advanced</option>
+          </select>
+          <div className="w-px h-6 bg-zinc-100" />
+          <select 
+            value={filterStatus} 
+            onChange={(e) => setFilterStatus(e.target.value)}
+            className="px-5 py-3 bg-transparent outline-none font-black text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-900 transition-all appearance-none cursor-pointer min-w-[120px] text-center"
+          >
+            <option value="all">Status</option>
+            <option value="active">Active</option>
+            <option value="inactive">Drafts</option>
+            <option value="archived">Archived</option>
+            <option value="live">Live</option>
+          </select>
+          <div className="w-px h-6 bg-zinc-100" />
+          <select 
+            value={filterPhase} 
+            onChange={(e) => setFilterPhase(e.target.value)}
+            className="px-5 py-3 bg-transparent outline-none font-black text-[10px] uppercase tracking-wider text-zinc-500 hover:text-zinc-900 transition-all appearance-none cursor-pointer min-w-[120px] text-center"
+          >
+            <option value="all">Phases</option>
+            <option value="1">Phase 1</option>
+            <option value="2">Phase 2</option>
+            <option value="3">Phase 3</option>
+          </select>
+        </div>
+
+        <button className="flex items-center gap-2 px-6 py-4.5 bg-zinc-900 text-white rounded-[1.5rem] font-black text-[10px] uppercase tracking-widest hover:bg-red-600 transition-all shadow-lg active:scale-95">
+          <Funnel size={18} weight="bold" /> Filter
+        </button>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-10">
         {filteredCourses.map((course) => (
-          <div key={course.id} className={`bg-white rounded-[1.5rem] sm:rounded-[2.5rem] p-5 sm:p-8 shadow-sm border border-black/20 hover:-translate-y-2 transition-all transition duration-300 ease-in-out group relative ${course.isDeleted ? 'opacity-70 grayscale-[0.5]' : ''}`}>
-            {course.isDeleted && <div className="absolute top-4 left-4 bg-red-100 text-red-700 px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest z-20 shadow-md">Archived</div>}
-            
-            <div className="w-full aspect-video rounded-[1.5rem] bg-zinc-950 mb-6 relative overflow-hidden group-hover:shadow-lg transition-all duration-500 border border-black/5">
-              {course.coverImageUrl || course.imageUrl ? (
-                <img 
-                  src={course.coverImageUrl || course.imageUrl} 
-                  alt={course.title} 
-                  loading="lazy"
-                  className="absolute inset-0 w-full h-full object-cover group-hover:scale-110 transition-transform duration-1000" 
-                />
-              ) : (
-                <div className="absolute inset-0 bg-gradient-to-br from-[#1c0000] to-[#3a0000] flex flex-col items-center justify-center p-6 text-center">
-                  <div className="absolute inset-0 bg-[linear-gradient(rgba(255,26,26,0.03)_1px,transparent_1px),linear-gradient(90deg,rgba(255,26,26,0.03)_1px,transparent_1px)] bg-[size:20px_20px] pointer-events-none" />
-                  <div className="w-12 h-12 rounded-2xl bg-[#ffe6e6]/10 flex items-center justify-center text-[#ff1a1a] mb-3 relative z-10 shadow-[0_0_20px_rgba(255,26,26,0.15)] group-hover:scale-110 transition-transform duration-500">
-                    <CourseIcon iconName={course.iconName} className="drop-shadow-[0_0_8px_#ff1a1a]" size={24} />
-                  </div>
-                  <div className="text-[8px] font-black uppercase tracking-[0.25em] text-[#ff1a1a] relative z-10 mb-1">
-                    EL SEWEDY GENZ TRACK
-                  </div>
-                </div>
-              )}
-              
-              {/* Overlay Actions */}
-              <div className="absolute top-4 right-4 flex gap-2 z-20 opacity-0 group-hover:opacity-100 transition-opacity duration-300">
-                <button onClick={() => openEdit(course)} className="w-9 h-9 bg-white/90 hover:bg-white backdrop-blur-md text-zinc-900 rounded-xl flex items-center justify-center transition-all shadow-sm hover:scale-105 active:scale-95"><PencilSimple size={16} weight="bold" /></button>
-                <button onClick={() => handleDelete(course.id)} className="w-9 h-9 bg-red-500/90 hover:bg-red-500 backdrop-blur-md text-white rounded-xl flex items-center justify-center transition-all shadow-sm hover:scale-105 active:scale-95"><Trash size={16} weight="bold" /></button>
-              </div>
-            </div>
-            <h3 className="font-display text-xl font-bold text-zinc-900 mb-1">{course.title}</h3>
-            <p className="text-sm font-medium text-zinc-500 mb-3">{course.subtitle || course.slug}</p>
-            <div className="flex flex-wrap gap-2 mb-4">
-              <span className="px-2.5 py-1 bg-zinc-100 text-zinc-600 rounded text-xs font-bold uppercase">{course.level}</span>
-              <span className="px-2.5 py-1 bg-brand-hover text-zinc-700 rounded text-xs font-bold">Phase {course.phase}</span>
-              <span className={`px-2.5 py-1 rounded text-xs font-bold ${course.isActive ? 'bg-green-100 text-green-700' : 'bg-zinc-100 text-zinc-400'}`}>{course.isActive ? 'Active' : 'Inactive'}</span>
-            </div>
-            <div className="flex items-center justify-between border-t border-black/5 pt-5 mt-4 mb-4">
-              <div><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Investment</div><div className="text-xl font-black text-zinc-900">{course.priceEgp} EGP</div></div>
-              <div className="text-right"><div className="text-xs font-bold text-zinc-400 uppercase tracking-widest mb-1">Sessions</div><div className="text-sm font-bold text-zinc-600">{course.coreSessions}C / {course.supportSessions}S</div></div>
-            </div>
-            <Link
-              href={`/admin/courses/${course.slug}`}
-              className="w-full block text-center px-4 py-3 bg-zinc-950 text-white hover:bg-[#cc0000] rounded-xl font-black uppercase tracking-wider text-[10px] transition-all duration-300 active:scale-[0.98] shadow-sm"
-            >
-              View Rounds & Enter Room
-            </Link>
-          </div>
+          <CourseCard
+            key={course.id}
+            course={course}
+            onEdit={openEdit}
+            onPretest={openPretest}
+            onDelete={handleDelete}
+            onRefresh={() => getAdminCourses().then(setCourses)}
+          />
         ))}
       </div>
 
@@ -449,22 +503,26 @@ export default function AdminCoursesPage() {
             <div className="flex-1 overflow-y-auto p-6 sm:p-8 custom-scrollbar relative z-10 space-y-8 bg-zinc-50/50">
               {step === 1 && (
                 <div className="space-y-8 max-w-3xl mx-auto">
-                  {/* Title & Slug */}
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
                       <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Course Title *</label>
                       <input {...field("title")} placeholder="e.g. Intro to Creative Robotics" className="w-full px-4 py-3 bg-zinc-50 hover:bg-zinc-100/50 rounded-2xl border border-black/5 font-bold focus:bg-white focus:ring-2 focus:ring-black/10 outline-none transition-all" />
                     </div>
                     <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Slug Reference URL *</label>
-                      <input {...field("slug")} placeholder="intro-robotics" className="w-full px-4 py-3 bg-zinc-50 hover:bg-zinc-100/50 rounded-2xl border border-black/5 font-mono font-bold text-sm focus:bg-white focus:ring-2 focus:ring-black/10 outline-none transition-all" />
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Tuition Price (EGP) *</label>
+                      <input type="number" {...field("priceEgp")} placeholder="5000" className="w-full px-4 py-3 bg-zinc-50 hover:bg-zinc-100/50 rounded-2xl border border-black/5 font-bold focus:bg-white focus:ring-2 focus:ring-black/10 outline-none transition-all" />
                     </div>
                   </div>
 
-                  {/* Subtitle & Descriptions */}
-                  <div className="flex flex-col gap-1.5">
-                    <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Card Subtitle / Cohort Tagline</label>
-                    <input {...field("subtitle")} placeholder="e.g. Ages 13–16 · Intermediate · Phase 1" className="w-full px-4 py-3 bg-zinc-50 hover:bg-zinc-100/50 rounded-2xl border border-black/5 font-bold focus:bg-white focus:ring-2 focus:ring-black/10 outline-none transition-all" />
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Slug Reference URL *</label>
+                      <input {...field("slug")} placeholder="intro-robotics" className="w-full px-4 py-3 bg-zinc-50 hover:bg-zinc-100/50 rounded-2xl border border-black/5 font-mono font-bold text-sm focus:bg-white focus:ring-2 focus:ring-black/10 outline-none transition-all" />
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Card Subtitle / Cohort Tagline</label>
+                      <input {...field("subtitle")} placeholder="e.g. Ages 13–16 · Intermediate · Phase 1" className="w-full px-4 py-3 bg-zinc-50 hover:bg-zinc-100/50 rounded-2xl border border-black/5 font-bold focus:bg-white focus:ring-2 focus:ring-black/10 outline-none transition-all" />
+                    </div>
                   </div>
 
                   <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -716,11 +774,7 @@ export default function AdminCoursesPage() {
                   </div>
 
                   {/* Level & Age range settings */}
-                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Tuition Pricing (EGP)</label>
-                      <input type="number" {...field("priceEgp")} className="w-full px-4 py-3 bg-zinc-50 rounded-2xl border border-black/5 font-bold focus:bg-white focus:ring-2 focus:ring-black/10 outline-none transition-all" />
-                    </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                     <div className="flex flex-col gap-1.5">
                       <label className="text-[10px] font-black text-zinc-400 uppercase tracking-widest ml-1">Student Minimum Age</label>
                       <input type="number" {...field("minimumAge")} className="w-full px-4 py-3 bg-zinc-50 rounded-2xl border border-black/5 font-bold focus:bg-white focus:ring-2 focus:ring-black/10 outline-none transition-all" />
@@ -959,7 +1013,7 @@ export default function AdminCoursesPage() {
                     {/* Submit button */}
                     <button
                       onClick={addQuestion}
-                      className="w-full py-3 bg-zinc-900 text-white rounded-xl font-bold text-sm hover:bg-black transition-colors flex items-center justify-center gap-2 cursor-pointer"
+                      className="w-full py-3 bg-[#ff1a1a] text-white rounded-xl font-bold text-sm hover:bg-[#ff4d4d] transition-colors flex items-center justify-center gap-2 cursor-pointer shadow-md"
                     >
                       <Plus size={16} weight="bold" /> Add Question to Screening
                     </button>
@@ -993,6 +1047,26 @@ export default function AdminCoursesPage() {
                       <input type="number" value={roundForm.maxStudents} onChange={e => setRoundForm(prev => ({ ...prev, maxStudents: Number(e.target.value) }))} className="w-full px-4 py-3 bg-zinc-50 rounded-xl border border-black/5 font-bold focus:ring-2 focus:ring-black/10 outline-none" />
                     </div>
                   </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4">
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Assigned Engineer</label>
+                      <select value={roundForm.engineerUserId || ""} onChange={e => setRoundForm(prev => ({ ...prev, engineerUserId: e.target.value }))} className="w-full px-4 py-3 bg-zinc-50 rounded-xl border border-black/5 font-bold text-sm focus:ring-2 focus:ring-black/10 outline-none">
+                        <option value="">No Engineer Assigned</option>
+                        {engineers.map(e => (
+                          <option key={e.id} value={e.id}>{e.displayName}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex flex-col gap-1.5">
+                      <label className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest ml-1">Assigned CTA</label>
+                      <select value={roundForm.ctaUserId || ""} onChange={e => setRoundForm(prev => ({ ...prev, ctaUserId: e.target.value }))} className="w-full px-4 py-3 bg-zinc-50 rounded-xl border border-black/5 font-bold text-sm focus:ring-2 focus:ring-black/10 outline-none">
+                        <option value="">No CTA Assigned</option>
+                        {ctas.map(c => (
+                          <option key={c.id} value={c.id}>{c.displayName}</option>
+                        ))}
+                      </select>
+                    </div>
+                  </div>
                   <div className="flex flex-col gap-4 pt-2">
                     <PremiumSwitch
                       checked={roundForm.isEnrollmentOpen}
@@ -1013,26 +1087,36 @@ export default function AdminCoursesPage() {
               {step === 1 ? (
                 <div className="flex flex-col-reverse sm:flex-row gap-3 w-full justify-end">
                   <button onClick={() => setShowWizard(false)} className="w-full sm:w-auto px-6 py-4 bg-white border border-black/10 text-zinc-600 rounded-2xl font-bold uppercase tracking-wider text-xs hover:bg-zinc-50 hover:text-zinc-900 transition-all active:scale-95">Cancel</button>
-                  <button onClick={handleSaveCourse} disabled={saving} className="w-full sm:w-auto px-8 py-4 bg-zinc-950 text-white rounded-2xl font-black uppercase tracking-wider text-xs hover:bg-brand disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.5)] transition-all active:scale-95">
-                    <FloppyDisk size={18} weight="bold" /> {saving ? "Saving..." : editing ? "Update Course" : "Save & Continue"}
+                  <button onClick={handleSaveCourse} disabled={saving} className="w-full sm:w-auto px-8 py-4 bg-[#ff1a1a] text-white rounded-2xl font-black uppercase tracking-wider text-xs hover:bg-[#ff4d4d] disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95">
+                    <FloppyDisk size={18} weight="bold" /> {saving ? "Saving..." : editing ? "Update & Continue" : "Save & Continue"}
                   </button>
                 </div>
               ) : step === 2 ? (
                 <div className="flex flex-col sm:flex-row gap-4 w-full justify-between">
-                  <button onClick={() => setStep(1)} className="w-full sm:w-auto px-6 py-4 bg-white border border-black/10 text-zinc-600 rounded-2xl font-bold uppercase tracking-wider text-xs hover:bg-zinc-50 transition-all active:scale-95">← Back to Data</button>
-                  <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
-                    {editing && <button onClick={() => setShowWizard(false)} className="w-full sm:w-auto px-8 py-4 bg-zinc-100 text-zinc-900 rounded-2xl font-black uppercase tracking-wider text-xs hover:bg-zinc-200 transition-all active:scale-95">Save & Close</button>}
-                    <button onClick={() => setStep(3)} className="w-full sm:w-auto px-8 py-4 bg-zinc-950 text-white rounded-2xl font-black uppercase tracking-wider text-xs hover:bg-brand flex items-center justify-center gap-2 shadow-[0_10px_30px_-10px_rgba(0,0,0,0.5)] transition-all active:scale-95">
-                      {editing ? "Skip to Rounds" : "Next: Launch Round"} <ArrowRight size={18} weight="bold" />
-                    </button>
-                  </div>
+                  {isPretestOnly ? (
+                    <div className="w-full flex justify-end">
+                      <button onClick={() => setShowWizard(false)} className="w-full sm:w-auto px-8 py-4 bg-zinc-900 text-white rounded-2xl font-black uppercase tracking-wider text-xs hover:bg-black flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95">
+                        Finish Management <CheckCircle size={18} weight="bold" />
+                      </button>
+                    </div>
+                  ) : (
+                    <>
+                      <button onClick={() => setStep(1)} className="w-full sm:w-auto px-6 py-4 bg-white border border-black/10 text-zinc-600 rounded-2xl font-bold uppercase tracking-wider text-xs hover:bg-zinc-50 transition-all active:scale-95">← Back to Data</button>
+                      <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
+                        {editing && <button onClick={() => setShowWizard(false)} className="w-full sm:w-auto px-8 py-4 bg-zinc-100 text-zinc-900 rounded-2xl font-black uppercase tracking-wider text-xs hover:bg-zinc-200 transition-all active:scale-95">Save & Close</button>}
+                        <button onClick={() => setStep(3)} className="w-full sm:w-auto px-8 py-4 bg-[#ff1a1a] text-white rounded-2xl font-black uppercase tracking-wider text-xs hover:bg-[#ff4d4d] flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95">
+                          {editing ? "Skip to Rounds" : "Next: Launch Round"} <ArrowRight size={18} weight="bold" />
+                        </button>
+                      </div>
+                    </>
+                  )}
                 </div>
               ) : (
                 <div className="flex flex-col sm:flex-row gap-4 w-full justify-between">
                   <button onClick={() => setStep(2)} className="w-full sm:w-auto px-6 py-4 bg-white border border-black/10 text-zinc-600 rounded-2xl font-bold uppercase tracking-wider text-xs hover:bg-zinc-50 transition-all active:scale-95">← Back to Questions</button>
                   <div className="flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
                     {editing && <button onClick={() => setShowWizard(false)} className="w-full sm:w-auto px-8 py-4 bg-zinc-100 text-zinc-900 rounded-2xl font-black uppercase tracking-wider text-xs hover:bg-zinc-200 transition-all active:scale-95">Close</button>}
-                    <button onClick={handleCreateRound} disabled={saving} className="w-full sm:w-auto px-8 py-4 bg-brand text-zinc-950 rounded-2xl font-black uppercase tracking-wider text-xs hover:brightness-110 disabled:opacity-50 flex items-center justify-center gap-2 shadow-[0_10px_30px_-10px_rgba(159,232,112,0.5)] transition-all active:scale-95">
+                    <button onClick={handleCreateRound} disabled={saving} className="w-full sm:w-auto px-8 py-4 bg-[#ff1a1a] text-white rounded-2xl font-black uppercase tracking-wider text-xs hover:bg-[#ff4d4d] disabled:opacity-50 flex items-center justify-center gap-2 shadow-lg transition-all active:scale-95">
                       <Plus size={18} weight="bold" /> {saving ? "Creating..." : "Initialize First Round"}
                     </button>
                   </div>

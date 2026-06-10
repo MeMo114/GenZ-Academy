@@ -12,7 +12,7 @@ import { useCart } from "@/lib/cart-context";
 import Link from "next/link";
 import { UploadSimple } from "@phosphor-icons/react";
 import { uploadToCloudinary } from "@/lib/cloudinary";
-import { uploadPaymentReceipt, markApplicationPaid, checkoutCart, validatePromoCode } from "@/lib/api";
+import { uploadPaymentReceipt, markApplicationPaid, checkoutCart, validatePromoCode, uploadOrderReceipt } from "@/lib/api";
 
 export default function PaymentPage() {
   const { user } = useAuth();
@@ -148,21 +148,23 @@ export default function PaymentPage() {
     setBusy(true);
     try {
       if (method === "wallet") {
-        if (applicationId) {
-          let secureUrl = receiptBase64;
-          try {
-            secureUrl = await uploadToCloudinary(receiptBase64, "receipts");
-          } catch (cloudinaryError: any) {
-            setReceiptError("Cloudinary upload failed: " + cloudinaryError.message);
-            toast("Cloudinary upload failed: " + cloudinaryError.message, "error");
-            setBusy(false);
-            return;
-          }
-          await uploadPaymentReceipt(applicationId, { receiptUrl: secureUrl, paymentMethod: "Wallet Transfer" });
-        } else {
-          toast("Wallet transfer is currently only supported for direct application payments.", "error");
+        let secureUrl = receiptBase64;
+        try {
+          secureUrl = await uploadToCloudinary(receiptBase64, "receipts");
+        } catch (cloudinaryError: any) {
+          setReceiptError("Cloudinary upload failed: " + cloudinaryError.message);
+          toast("Cloudinary upload failed: " + cloudinaryError.message, "error");
           setBusy(false);
           return;
+        }
+
+        if (applicationId) {
+          await uploadPaymentReceipt(applicationId, { receiptUrl: secureUrl, paymentMethod: "Wallet Transfer" });
+        } else {
+          // 1. Checkout cart first to get the order
+          const orderId = await checkoutCart({ paymentMethod: "Wallet Transfer" });
+          // 2. Upload receipt for that order
+          await uploadOrderReceipt(orderId, { receiptUrl: secureUrl, paymentMethod: "Wallet Transfer" });
         }
         toast("Transfer receipt submitted successfully! Pending admin approval.", "success");
       } else {
@@ -198,9 +200,13 @@ export default function PaymentPage() {
           <div className="w-28 h-28 bg-[#c2f0ff] rounded-full flex items-center justify-center mx-auto mb-8">
             <CheckCircle size={64} weight="fill" className="text-[#0284c7]" />
           </div>
-          <h1 className="font-display text-4xl font-black text-zinc-900 mb-4">Payment Complete</h1>
+          <h1 className="font-display text-4xl font-black text-zinc-900 mb-4">
+            {method === "wallet" ? "Receipt Received" : "Payment Complete"}
+          </h1>
           <p className="text-zinc-500 font-medium mb-8 text-lg leading-relaxed">
-            Your enrollment in <strong className="text-zinc-900">{courseName}</strong> is confirmed. Get ready for your first session.
+            {method === "wallet" 
+              ? "Your transfer receipt is under review. You'll receive access as soon as the academy verifies it."
+              : `Your enrollment in ${courseName} is confirmed. Get ready for your first session.`}
           </p>
           <div className="flex flex-col gap-3">
             <button 

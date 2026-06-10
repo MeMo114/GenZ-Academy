@@ -102,8 +102,8 @@ public class CartService(AcademyDbContext db, IReferralService referrals) : ICar
             ReferralCode = cart.ReferralCode,
             TotalAmountEgp = cart.TotalEgp,
             PaymentMethod = request.PaymentMethod,
-            PaymentStatus = PaymentStatus.Paid, // Auto-paid for demo
-            PaidAt = DateTimeOffset.UtcNow
+            PaymentStatus = PaymentStatus.Pending,
+            PaidAt = null
         };
         db.EnrollmentOrders.Add(order);
 
@@ -115,8 +115,8 @@ public class CartService(AcademyDbContext db, IReferralService referrals) : ICar
                 CohortId = item.CohortId,
                 StudentUserId = userId,
                 EnrollmentOrder = order,
-                EnrollmentStatus = EnrollmentStatus.Active,
-                Status = "active",
+                EnrollmentStatus = EnrollmentStatus.Pending,
+                Status = "pending_payment",
                 UnitPriceEgp = item.UnitPriceEgp,
                 DiscountAmountEgp = item.DiscountAmountEgp,
                 FinalPriceEgp = item.FinalPriceEgp,

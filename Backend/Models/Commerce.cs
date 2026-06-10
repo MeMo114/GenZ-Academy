@@ -18,6 +18,8 @@ public class EnrollmentOrder
     public PaymentStatus PaymentStatus { get; set; } = PaymentStatus.Pending;
     public string? PaymentMethod { get; set; }
     public string? PaymentReference { get; set; }
+    public string? PaymentReceiptUrl { get; set; }
+    public bool PaymentReceiptPendingReview { get; set; }
     public DateTimeOffset? PaidAt { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public ICollection<Enrollment> Enrollments { get; set; } = [];

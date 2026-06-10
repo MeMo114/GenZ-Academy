@@ -38,11 +38,29 @@ public class AuthController(
 
     [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterRequest request, CancellationToken cancellationToken)
-        => Ok(await authWorkflow.RegisterAsync(request, cancellationToken));
+    {
+        try
+        {
+            return Ok(await authWorkflow.RegisterAsync(request, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
 
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest request, CancellationToken cancellationToken)
-        => Ok(await authWorkflow.LoginAsync(request, cancellationToken));
+    {
+        try
+        {
+            return Ok(await authWorkflow.LoginAsync(request, cancellationToken));
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
 
     [HttpPost("email/request-verification")]
     public async Task<IActionResult> RequestVerification(RequestEmailVerificationRequest request, CancellationToken cancellationToken)
@@ -63,6 +81,27 @@ public class AuthController(
     [HttpPost("onboarding")]
     public async Task<IActionResult> Onboarding(OnboardingRequest request, CancellationToken cancellationToken)
         => Ok(await authWorkflow.CompleteOnboardingAsync(CurrentUserId(), request, cancellationToken));
+
+    [HttpPost("forgot-password")]
+    public async Task<IActionResult> ForgotPassword(ForgotPasswordRequest request, CancellationToken cancellationToken)
+    {
+        await authWorkflow.ForgotPasswordAsync(request.Email, cancellationToken);
+        return Ok(new { success = true });
+    }
+
+    [HttpPost("reset-password")]
+    public async Task<IActionResult> ResetPassword(ResetPasswordRequest request, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await authWorkflow.ResetPasswordAsync(request, cancellationToken);
+            return Ok(new { success = true });
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { success = false, message = ex.Message });
+        }
+    }
 
     [HttpGet("debug/users")]
     public async Task<IActionResult> DebugUsers()
@@ -196,6 +235,11 @@ public class AuthController(
                 }
 
                 await InitializeStudentAccountAsync(user);
+            }
+
+            if (!user.IsActive)
+            {
+                return Redirect($"{GetFrontendUrl(returnUrl)}/auth?error=Account+is+deactivated");
             }
 
             await signInManager.SignInAsync(user, isPersistent: true);
@@ -335,7 +379,7 @@ public class AuthController(
             // Verify audience matches the authorized client ID
             var allowedClientIds = new List<string> {
                 configuration["Authentication:Google:ClientId"] ?? "",
-                "1017632556527-l847alsomgr7qsnmfo709alduqvtdbsb.apps.googleusercontent.com"
+                "256530260039-p3f2572andj8f00nkagfb903patv859p.apps.googleusercontent.com"
             };
 
             if (!allowedClientIds.Contains(payload.Audience ?? ""))
@@ -370,6 +414,11 @@ public class AuthController(
                 }
 
                 await InitializeStudentAccountAsync(user);
+            }
+
+            if (!user.IsActive)
+            {
+                return BadRequest(new { message = "Account is deactivated. Please contact support." });
             }
 
             // Perform internal sign in
@@ -413,58 +462,14 @@ public class AuthController(
     private string GetDestination(ApplicationUser user)
     {
         if (user.RoleKey == AcademyRole.AcademyAdmin) return "/admin";
+        if (user.RoleKey == AcademyRole.Engineer) return "/engineer";
+        if (user.RoleKey == AcademyRole.Cta) return "/cta";
         return "/dashboard";
     }
 
     private async Task InitializeStudentAccountAsync(ApplicationUser user)
     {
-        if (!await roleManager.RoleExistsAsync(AcademyRole.Student))
-        {
-            await roleManager.CreateAsync(new ApplicationRole { Name = AcademyRole.Student });
-        }
-        await userManager.AddToRoleAsync(user, AcademyRole.Student);
-
-        db.StudentProfiles.Add(new StudentProfile
-        {
-            UserId = user.Id,
-            ReferralCode = await referrals.GenerateUniqueCodeAsync(user.FirstName),
-            IsOnboardingCompleted = false
-        });
-
-        db.UserNotificationSettings.Add(new UserNotificationSetting 
-        { 
-            UserId = user.Id, 
-            EmailEnabled = true, 
-            WhatsAppEnabled = true 
-        });
-
-        // Auto-enroll new user in all courses so their enrollments are instantly open!
-        var courses = await db.Courses.ToListAsync();
-        foreach (var c in courses)
-        {
-            db.Enrollments.Add(new Enrollment
-            {
-                CourseId = c.Id,
-                StudentUserId = user.Id,
-                Status = "active",
-                EnrollmentStatus = EnrollmentStatus.Active,
-                UnitPriceEgp = c.PriceEgp,
-                DiscountAmountEgp = c.PriceEgp,
-                FinalPriceEgp = 0,
-                PromoCode = "GOOGLE_AUTO",
-                CompletedAt = DateTimeOffset.UtcNow,
-                CreatedAt = DateTimeOffset.UtcNow
-            });
-        }
-
-        await db.SaveChangesAsync();
-
-        await notifications.QueueAsync(
-            user.Id,
-            "Welcome to ElSewedy Academy via Google",
-            $"Hi {user.FirstName}, your account has been successfully initialized. Browse our tracks and complete onboarding to start.",
-            [NotificationChannel.InApp, NotificationChannel.Email],
-            CancellationToken.None);
+        await authWorkflow.InitializeUserAccountAsync(user, CancellationToken.None);
     }
 
     public class GoogleTokenRequest
@@ -542,125 +547,6 @@ public class AuthController(
     {
         await HttpContext.SignOutAsync(IdentityConstants.ApplicationScheme);
         return Ok();
-    }
-
-    [HttpPost("forgot-password")]
-    [AllowAnonymous]
-    public async Task<IActionResult> ForgotPassword([FromBody] ForgotPasswordRequest request, CancellationToken cancellationToken)
-    {
-        if (string.IsNullOrWhiteSpace(request.Email))
-        {
-            return BadRequest(new { message = "Email is required" });
-        }
-
-        var user = await userManager.FindByEmailAsync(request.Email.Trim().ToLowerInvariant());
-        if (user is null)
-        {
-            var email = request.Email.Trim().ToLowerInvariant();
-            user = new ApplicationUser
-            {
-                UserName = email,
-                Email = email,
-                FirstName = "Academy",
-                LastName = "Student",
-                EmailConfirmed = true,
-                VerifiedAt = DateTimeOffset.UtcNow,
-                RoleKey = AcademyRole.Student,
-                IsActive = true
-            };
-            var createResult = await userManager.CreateAsync(user);
-            if (!createResult.Succeeded)
-            {
-                return BadRequest(new { message = "Failed to create user." });
-            }
-            await InitializeStudentAccountAsync(user);
-        }
-
-        var code = RandomNumberGenerator.GetInt32(100000, 999999).ToString();
-        var token = Convert.ToBase64String(RandomNumberGenerator.GetBytes(32));
-
-        db.EmailVerificationCodes.Add(new EmailVerificationCode
-        {
-            UserId = user.Id,
-            Email = user.Email ?? request.Email,
-            CodeHash = Hash(code),
-            VerificationTokenHash = Hash(token),
-            Purpose = VerificationPurpose.PasswordReset,
-            ExpiresAt = DateTimeOffset.UtcNow.AddMinutes(15)
-        });
-        await db.SaveChangesAsync(cancellationToken);
-
-        string frontendUrl = GetFrontendUrl("/");
-        await notifications.QueueAsync(
-            user.Id,
-            "Reset your password",
-            $"Use code {code} or reset your password here: {frontendUrl}/reset-password?token={Uri.EscapeDataString(token)}&userId={user.Id}",
-            [NotificationChannel.Email, NotificationChannel.InApp],
-            cancellationToken);
-
-        return Ok(new { success = true, message = "If the email is registered, a reset link has been sent." });
-    }
-
-    [HttpPost("reset-password")]
-    [AllowAnonymous]
-    public async Task<IActionResult> ResetPassword([FromBody] ResetPasswordRequest request, CancellationToken cancellationToken)
-    {
-        if (request.UserId == Guid.Empty || string.IsNullOrWhiteSpace(request.Token) || string.IsNullOrWhiteSpace(request.NewPassword))
-        {
-            return BadRequest(new { message = "All fields are required" });
-        }
-
-        var user = await userManager.FindByIdAsync(request.UserId.ToString());
-        if (user is null) return BadRequest(new { message = "User not found" });
-
-        var record = await db.EmailVerificationCodes
-            .Where(x => x.UserId == user.Id && x.Purpose == VerificationPurpose.PasswordReset && x.Status == VerificationStatus.Pending)
-            .OrderByDescending(x => x.CreatedAt)
-            .FirstOrDefaultAsync(cancellationToken);
-
-        if (record == null || record.VerificationTokenHash != Hash(request.Token) || record.ExpiresAt < DateTimeOffset.UtcNow)
-        {
-            return BadRequest(new { message = "Invalid or expired reset token" });
-        }
-
-        var resetToken = await userManager.GeneratePasswordResetTokenAsync(user);
-        var result = await userManager.ResetPasswordAsync(user, resetToken, request.NewPassword);
-
-        if (!result.Succeeded)
-        {
-            return BadRequest(new { message = string.Join("; ", result.Errors.Select(e => e.Description)) });
-        }
-
-        record.Status = VerificationStatus.Used;
-        record.UsedAt = DateTimeOffset.UtcNow;
-        await db.SaveChangesAsync(cancellationToken);
-
-        await notifications.QueueAsync(
-            user.Id,
-            "Password changed successfully",
-            "Your password has been successfully reset. If this wasn't you, contact support immediately.",
-            [NotificationChannel.Email, NotificationChannel.InApp],
-            cancellationToken);
-
-        return Ok(new { success = true });
-    }
-
-    private static string Hash(string value)
-    {
-        var bytes = SHA256.HashData(Encoding.UTF8.GetBytes(value));
-        return Convert.ToHexString(bytes);
-    }
-
-    public class ForgotPasswordRequest
-    {
-        public string Email { get; set; } = string.Empty;
-    }
-
-    public class ResetPasswordRequest
-    {
-        public Guid UserId { get; set; }
-        public string Token { get; set; } = string.Empty;
-        public string NewPassword { get; set; } = string.Empty;
     }
 
     private Guid CurrentUserId()

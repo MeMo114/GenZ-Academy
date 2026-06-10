@@ -29,3 +29,7 @@ public record OnboardingRequest(
 public record UpdateProfileRequest(string? FirstName, string? LastName, string? Bio, string? PhoneNumber, string? InterestsJson);
 
 public record ChangePasswordRequest(string CurrentPassword, string NewPassword);
+
+public record ForgotPasswordRequest(string Email);
+
+public record ResetPasswordRequest(Guid UserId, string Token, string NewPassword);

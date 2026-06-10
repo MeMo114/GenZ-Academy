@@ -25,6 +25,7 @@ export type Course = {
   priceEgp: number;
   coreSessions: number;
   supportSessions: number;
+  sessionsCount: number;
   level: string;
   phase?: number;
   colorHex?: string;
@@ -34,6 +35,7 @@ export type Course = {
   skillsTaughtJson?: string;
   isActive?: boolean;
   isFeatured?: boolean;
+  isDeleted?: boolean;
   sortOrder?: number;
   modules?: CourseModule[];
 };
@@ -59,6 +61,10 @@ export type CourseRound = {
   isEnrollmentOpen: boolean;
   autoAcceptPaidApplications: boolean;
   requireEngineerApproval: boolean;
+  engineerUserId?: string | null;
+  ctaUserId?: string | null;
+  instructorName?: string | null;
+  ctaName?: string | null;
   zoomMeetingId?: string | null;
   zoomJoinUrl?: string | null;
   zoomStartUrl?: string | null;
@@ -241,7 +247,6 @@ export type AdminCourseDetail = AdminCourse & {
   activeRoundsCount: number;
   enrollmentsCount: number;
   materialsCount: number;
-  sessionsCount: number;
 };
 
 export type Notification = {
@@ -318,6 +323,7 @@ export type StudentItem = {
   email: string;
   enrolledAt: string;
   applicationId?: string;
+  enrollmentId?: string;
 };
 
 export type QuizItem = {

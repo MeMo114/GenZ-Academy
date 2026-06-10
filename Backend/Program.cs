@@ -30,8 +30,8 @@ builder.WebHost.UseSentry(o =>
     o.Environment = builder.Environment.EnvironmentName;
 });
 
-var connectionString = builder.Configuration.GetConnectionString("DefaultConnection")
-    ?? throw new InvalidOperationException("ConnectionStrings:DefaultConnection is missing.");
+var connectionString = builder.Configuration.GetConnectionString("newCon")
+    ?? throw new InvalidOperationException("ConnectionStrings:newCon is missing.");
 
 builder.Services.AddDbContext<AcademyDbContext>(options =>
     options.UseSqlServer(connectionString));
@@ -39,8 +39,11 @@ builder.Services.AddDbContext<AcademyDbContext>(options =>
 builder.Services
     .AddIdentity<ApplicationUser, ApplicationRole>(options =>
     {
-        options.SignIn.RequireConfirmedAccount = true;
-        options.Password.RequiredLength = 8;
+        options.SignIn.RequireConfirmedAccount = false;
+        options.Password.RequiredLength = 6;
+        options.Password.RequireDigit = false;
+        options.Password.RequireLowercase = false;
+        options.Password.RequireUppercase = false;
         options.Password.RequireNonAlphanumeric = false;
         options.User.RequireUniqueEmail = true;
         options.Lockout.MaxFailedAccessAttempts = 5;
@@ -66,6 +69,18 @@ builder.Services.ConfigureApplicationCookie(options =>
     options.LoginPath = "/api/auth/google";
     options.AccessDeniedPath = "/api/auth/access-denied";
     options.SlidingExpiration = true;
+    options.Events.OnRedirectToLogin = context =>
+    {
+        if (context.Request.Path.StartsWithSegments("/api"))
+        {
+            context.Response.StatusCode = StatusCodes.Status401Unauthorized;
+        }
+        else
+        {
+            context.Response.Redirect(context.RedirectUri);
+        }
+        return Task.CompletedTask;
+    };
 });
 
 builder.Services.ConfigureExternalCookie(options =>
@@ -95,7 +110,7 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 {
     options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto | ForwardedHeaders.XForwardedHost;
     options.KnownProxies.Clear();
-    options.KnownIPNetworks.Clear();
+    options.KnownNetworks.Clear();
 });
 
 builder.Services.AddCors(options =>
@@ -252,6 +267,7 @@ else
 app.UseSentryTracing(); // Must be after UseRouting and before UseAuthorization
 app.UseCors("NextJsClient");
 app.UseAuthentication();
+app.UseMiddleware<ActiveUserMiddleware>();
 app.UseSentryUserContext();
 app.UseAuthorization();
 app.MapControllers();

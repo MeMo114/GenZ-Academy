@@ -37,6 +37,8 @@ const PUBLIC_ROUTES = [
   "/schools",
   "/team",
   "/apply",
+  "/forgot-password",
+  "/reset-password",
 ];
 
 const PUBLIC_PREFIXES = [
