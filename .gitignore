@@ -1,0 +1,57 @@
+# Frontend
+Frontend/node_modules/
+Frontend/.next/
+Frontend/.env
+Frontend/.env.local
+Frontend/*.tsbuildinfo
+Frontend/.vscode/
+
+# Backend
+# Build results
+bin/
+obj/
+
+# User-specific files
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Visual Studio / VS Code
+.vs/
+.vscode/
+
+# Build output
+Debug/
+Release/
+
+# ASP.NET Core
+appsettings.Development.json
+appsettings.Local.json
+
+# Secrets (VERY IMPORTANT)
+secrets.json
+*.key
+*.pem
+
+# Logs
+*.log
+
+
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Publish folder
+publish/
+wwwroot/dist/
+
+# Visual Studio
+.vs/
+*.user
+*.suo
+
+# Publish profiles
+*.PublishSettings
+*.publishsettings
