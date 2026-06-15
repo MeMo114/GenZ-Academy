@@ -124,7 +124,11 @@ builder.Services.AddCors(options =>
 });
 
 builder.Services.AddControllers()
-    .AddJsonOptions(options => options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter()));
+    .AddJsonOptions(options => 
+    {
+        options.JsonSerializerOptions.Converters.Add(new JsonStringEnumConverter());
+        options.JsonSerializerOptions.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+    });
 builder.Services.AddAuthorization(options =>
 {
     options.AddPolicy("AcademyStaff", policy => policy.RequireRole(AcademyRole.AcademyAdmin, AcademyRole.Engineer, AcademyRole.Cta));

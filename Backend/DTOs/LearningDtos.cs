@@ -25,6 +25,14 @@ public record MaterialCreateRequest(
     bool IsDownloadable,
     bool IsPublished);
 
+public record MaterialUpdateRequest(
+    string? Title,
+    string? Url,
+    string? Description,
+    CourseMaterialType? MaterialType,
+    bool? IsDownloadable,
+    bool? IsPublished);
+
 public record TaskCreateRequest(
     Guid? CourseSessionId,
     Guid? CourseRoundId,
@@ -37,6 +45,17 @@ public record TaskCreateRequest(
     int XpReward,
     int DueHoursAfterSession,
     string RubricJson);
+
+public record TaskUpdateRequest(
+    string? Title,
+    string? Description,
+    string? Instructions,
+    TaskType? TaskType,
+    SubmissionType? SubmissionType,
+    int? MaxScore,
+    int? XpReward,
+    int? DueHoursAfterSession,
+    string? RubricJson);
 
 public record TaskSubmitRequest(Guid LearningTaskId, Guid StudentUserId, string? SubmissionUrl, string? RepositoryUrl, string? SubmissionText);
 

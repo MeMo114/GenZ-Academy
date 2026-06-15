@@ -796,6 +796,54 @@ export const getEngineerStudents = () =>
 export const getEngineerProgressTasks = () =>
   apiGet<any[]>("/api/learning/engineer/pending-tasks", []);
 
+export const getEngineerCohorts = () =>
+  apiGet<any[]>("/api/learning/engineer/cohorts", []);
+
+export const getEngineerCourses = () =>
+  apiGet<any[]>("/api/learning/engineer/courses", []);
+
+export const getEngineerCohortDetail = (cohortId: string) =>
+  apiGet<any>(`/api/learning/engineer/cohorts/${cohortId}`, null);
+
+export const getEngineerWeek = (cohortId: string, weekId: string) =>
+  apiGet<any>(`/api/learning/engineer/cohorts/${cohortId}/weeks/${weekId}`, null);
+
+export const createEngineerWeek = (cohortId: string, data: any) =>
+  apiPost<any>(`/api/learning/engineer/cohorts/${cohortId}/weeks`, data);
+
+export const updateEngineerWeek = (cohortId: string, weekId: string, data: any) =>
+  apiPut<any>(`/api/learning/engineer/cohorts/${cohortId}/weeks/${weekId}`, data);
+
+export const deleteEngineerWeek = (cohortId: string, weekId: string) =>
+  apiDelete<any>(`/api/learning/engineer/cohorts/${cohortId}/weeks/${weekId}`);
+
+export const getEngineerMaterials = () =>
+  apiGet<any[]>("/api/learning/engineer/materials", []);
+
+export const updateEngineerMaterial = (materialId: string, data: any) =>
+  apiPut<any>(`/api/learning/engineer/materials/${materialId}`, data);
+
+export const deleteEngineerMaterial = (materialId: string) =>
+  apiDelete<any>(`/api/learning/engineer/materials/${materialId}`);
+
+export const getEngineerTask = (taskId: string) =>
+  apiGet<any>(`/api/learning/engineer/tasks/${taskId}`, null);
+
+export const updateEngineerTask = (taskId: string, data: any) =>
+  apiPut<any>(`/api/learning/engineer/tasks/${taskId}`, data);
+
+export const deleteEngineerTask = (taskId: string) =>
+  apiDelete<any>(`/api/learning/engineer/tasks/${taskId}`);
+
+export const getEngineerTaskSubmissions = (taskId: string) =>
+  apiGet<any[]>(`/api/learning/engineer/tasks/${taskId}/submissions`, []);
+
+export const createEngineerMaterial = (data: any) =>
+  apiPost<any>(`/api/learning/materials`, data);
+
+export const createEngineerTask = (data: any) =>
+  apiPost<any>(`/api/learning/tasks`, data);
+
 // ─── CTA Dashboard APIs ───────────────────────────────────────────────────────
 export const getCTADashboard = () =>
   apiGet<any>("/api/profiles/cta/dashboard", null);

@@ -509,6 +509,10 @@ public class AdminController(
         week.SessionLink = request.SessionLink;
         week.RecordingUrl = request.RecordingUrl;
         week.WeekNumber = request.WeekNumber;
+        if (request.ScheduledAt.HasValue)
+            week.ScheduledAt = request.ScheduledAt.Value;
+        if (request.DurationMinutes.HasValue)
+            week.DurationMinutes = request.DurationMinutes.Value;
 
         await db.SaveChangesAsync(cancellationToken);
         return Ok(new { week.Id });

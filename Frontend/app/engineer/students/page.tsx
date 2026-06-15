@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { MagnifyingGlass, Funnel, Student, X, Check, Users } from "@phosphor-icons/react";
+import { MagnifyingGlass, Student, X } from "@phosphor-icons/react";
 import { getEngineerStudents, getApplicationDetails } from "@/lib/api";
+import { motion } from "framer-motion";
 
 export default function EngineerStudentsPage() {
   const [students, setStudents] = useState<any[]>([]);
@@ -37,14 +38,20 @@ export default function EngineerStudentsPage() {
     s.course.toLowerCase().includes(search.toLowerCase())
   );
 
+  if (loading) {
+    return <div className="page-loader"><div className="spinner" /></div>;
+  }
+
   return (
-    <div className="w-full px-6 lg:px-12 pt-6 pb-24 relative">
-      <div className="mb-10">
-        <h1 className="font-display text-4xl font-black text-zinc-900 tracking-tight mb-2">Student Directory</h1>
-        <p className="text-zinc-500 font-medium">Browse and search all students across your active courses.</p>
+    <div className="w-full px-4 sm:px-8 py-6 sm:py-8 lg:px-12 relative">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 mb-8 sm:mb-12">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl sm:text-3xl lg:text-4xl font-display font-black tracking-tight text-zinc-900 leading-tight">Student Directory</h1>
+          <p className="text-zinc-500 font-medium">Browse and search all students across your active courses.</p>
+        </div>
       </div>
 
-      <div className="bg-white rounded-[2.5rem] p-8 shadow-sm border border-black/5">
+      <div className="bg-white rounded-[1.5rem] sm:rounded-[3rem] p-6 sm:p-8 shadow-sm border border-black/5">
          
          {/* Toolbar */}
          <div className="flex flex-col md:flex-row gap-4 mb-8">
@@ -64,9 +71,7 @@ export default function EngineerStudentsPage() {
 
          {/* Table */}
          <div className="overflow-x-auto">
-            {loading ? (
-              <div className="text-zinc-500 font-bold py-10">Loading student directory...</div>
-            ) : filteredStudents.length > 0 ? (
+            {filteredStudents.length > 0 ? (
               <table className="w-full min-w-[800px]">
                 <thead>
                   <tr className="border-b border-black/5">
@@ -79,7 +84,13 @@ export default function EngineerStudentsPage() {
                 </thead>
                 <tbody>
                   {filteredStudents.map((stu, idx) => (
-                    <tr key={idx} className="border-b border-black/5 hover:bg-zinc-50 transition-colors">
+                    <motion.tr
+                      key={idx}
+                      initial={{ opacity: 0, y: 10 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: idx * 0.05 }}
+                      className="border-b border-black/5 hover:bg-zinc-50 transition-colors"
+                    >
                       <td className="py-4 px-4">
                         <div className="flex items-center gap-3">
                            <div className="w-10 h-10 rounded-xl bg-zinc-200 flex items-center justify-center text-zinc-500">
@@ -115,12 +126,12 @@ export default function EngineerStudentsPage() {
                           <span className="text-xs text-zinc-400 font-medium">Direct Enrollment</span>
                         )}
                       </td>
-                    </tr>
+                    </motion.tr>
                   ))}
                 </tbody>
               </table>
             ) : (
-              <div className="text-zinc-500 font-medium py-10">No students found.</div>
+              <div className="text-zinc-500 font-medium py-10 text-center">No students found.</div>
             )}
          </div>
       </div>
@@ -135,7 +146,7 @@ export default function EngineerStudentsPage() {
           />
           
           {/* Drawer Panel */}
-          <div className="relative w-full max-w-xl h-full bg-white shadow-2xl flex flex-col z-10 animate-[slide-in_0.4s_ease-out]">
+          <div className="relative w-full max-w-xl h-full bg-white shadow-2xl flex flex-col z-10">
             {/* Header */}
             <div className="p-6 border-b border-black/5 flex items-center justify-between bg-zinc-50">
               <div>
@@ -197,7 +208,13 @@ export default function EngineerStudentsPage() {
                     {appDetails.answers && appDetails.answers.length > 0 ? (
                       <div className="space-y-4">
                         {appDetails.answers.map((answer: any, idx: number) => (
-                          <div key={idx} className="border border-black/5 rounded-2xl p-4 bg-white shadow-sm space-y-2.5">
+                          <motion.div
+                            key={idx}
+                            initial={{ opacity: 0, y: 10 }}
+                            animate={{ opacity: 1, y: 0 }}
+                            transition={{ delay: idx * 0.08 }}
+                            className="border border-black/5 rounded-2xl p-4 bg-white shadow-sm space-y-2.5"
+                          >
                             <div className="flex items-start justify-between gap-3">
                               <span className="text-xs font-black text-brand bg-brand-hover px-2.5 py-1 rounded-lg">Q{idx + 1}</span>
                               {answer.isCorrect !== null && (
@@ -212,7 +229,7 @@ export default function EngineerStudentsPage() {
                               <span className="text-[9px] font-bold text-zinc-400 uppercase tracking-wider block mb-1">Student Answer:</span>
                               <p className="text-sm font-medium text-zinc-800 break-words">{answer.answerText || "No answer provided."}</p>
                             </div>
-                          </div>
+                          </motion.div>
                         ))}
                       </div>
                     ) : (

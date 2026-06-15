@@ -105,7 +105,10 @@ public record UpdateRoundWeekRequest(
     string? Status,
     string? SessionLink,
     string? RecordingUrl,
-    int WeekNumber);
+    int WeekNumber,
+    DateTimeOffset? ScheduledAt, // New: Full scheduled date and time
+    int? DurationMinutes, // New: Duration in minutes instead of separate end time
+    string? Description); // New: Description
 
 public record AdminBroadcastRequest(
     string Title,
