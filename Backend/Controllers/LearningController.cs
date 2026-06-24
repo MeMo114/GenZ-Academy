@@ -36,12 +36,19 @@ public class LearningController(ILearningService learning, AcademyDbContext db) 
         if (material == null)
             return NotFound();
 
+        bool hasAccess;
         if (material.CohortId.HasValue)
         {
-            var cohort = await db.Cohorts.FirstOrDefaultAsync(x => x.Id == material.CohortId.Value && x.EngineerUserId == engineerUserId, cancellationToken);
-            if (cohort == null)
-                return Forbid();
+            hasAccess = await db.Cohorts.AnyAsync(x => x.Id == material.CohortId.Value && x.EngineerUserId == engineerUserId, cancellationToken);
         }
+        else
+        {
+            // Check if engineer has any cohort for this course
+            hasAccess = await db.Cohorts.AnyAsync(x => x.CourseId == material.CourseId && x.EngineerUserId == engineerUserId, cancellationToken);
+        }
+
+        if (!hasAccess)
+            return Forbid();
 
         if (request.Title != null)
             material.Title = request.Title;
@@ -73,12 +80,19 @@ public class LearningController(ILearningService learning, AcademyDbContext db) 
         if (material == null)
             return NotFound();
 
+        bool hasAccess;
         if (material.CohortId.HasValue)
         {
-            var cohort = await db.Cohorts.FirstOrDefaultAsync(x => x.Id == material.CohortId.Value && x.EngineerUserId == engineerUserId, cancellationToken);
-            if (cohort == null)
-                return Forbid();
+            hasAccess = await db.Cohorts.AnyAsync(x => x.Id == material.CohortId.Value && x.EngineerUserId == engineerUserId, cancellationToken);
         }
+        else
+        {
+            // Check if engineer has any cohort for this course
+            hasAccess = await db.Cohorts.AnyAsync(x => x.CourseId == material.CourseId && x.EngineerUserId == engineerUserId, cancellationToken);
+        }
+
+        if (!hasAccess)
+            return Forbid();
 
         db.CourseMaterials.Remove(material);
         await db.SaveChangesAsync(cancellationToken);
@@ -245,7 +259,9 @@ public class LearningController(ILearningService learning, AcademyDbContext db) 
     [Authorize(Roles = AcademyRole.Student)]
     [HttpPost("tasks/submissions")]
     public async Task<IActionResult> SubmitTask([FromBody] TaskSubmitRequest request, CancellationToken cancellationToken)
-        => Ok(new { id = await learning.SubmitTaskAsync(request, cancellationToken) });
+    {
+        return Ok(new { id = await learning.SubmitTaskAsync(CurrentUserId(), request, cancellationToken) });
+    }
 
     [Authorize(Policy = "AcademyStaff")]
     [HttpPost("tasks/submissions/{submissionId:guid}/grade")]
@@ -308,11 +324,19 @@ public class LearningController(ILearningService learning, AcademyDbContext db) 
 
     [Authorize(Roles = AcademyRole.Student)]
     [HttpGet("tasks")]
-    public async Task<IActionResult> MyTasks(CancellationToken cancellationToken)
+    public async Task<IActionResult> MyTasks([FromQuery] List<Guid>? cohortIds, CancellationToken cancellationToken)
     {
-        var enrollments = await learning.GetMyEnrollmentsAsync(CurrentUserId(), cancellationToken);
-        var cohortIds = enrollments.Select(e => e.CohortId).Distinct().ToList();
-        return Ok(await learning.GetMyTasksAsync(cohortIds, CurrentUserId(), cancellationToken));
+        List<Guid> ids;
+        if (cohortIds == null || cohortIds.Count == 0)
+        {
+            var enrollments = await learning.GetMyEnrollmentsAsync(CurrentUserId(), cancellationToken);
+            ids = enrollments.Select(e => e.CohortId).Distinct().ToList();
+        }
+        else
+        {
+            ids = cohortIds;
+        }
+        return Ok(await learning.GetMyTasksAsync(ids, CurrentUserId(), cancellationToken));
     }
 
     [Authorize(Policy = "AcademyStaff")]
@@ -414,12 +438,16 @@ public class LearningController(ILearningService learning, AcademyDbContext db) 
             .ToListAsync(cancellationToken);
 
         var cohortIds = cohorts.Select(x => x.Id).ToList();
+        var courseIds = cohorts.Select(x => x.CourseId).ToList();
 
         var materials = await db.CourseMaterials
             .AsNoTracking()
             .Include(x => x.Cohort)
                 .ThenInclude(c => c!.Course)
-            .Where(x => cohortIds.Contains(x.CohortId.Value))
+            .Where(x => 
+                (x.CohortId.HasValue && cohortIds.Contains(x.CohortId.Value)) 
+                || (!x.CohortId.HasValue && courseIds.Contains(x.CourseId))
+            )
             .OrderByDescending(x => x.CreatedAt)
             .Select(m => new
             {
@@ -578,7 +606,10 @@ public class LearningController(ILearningService learning, AcademyDbContext db) 
 
         var materials = await db.CourseMaterials
             .AsNoTracking()
-            .Where(x => x.CohortId == cohortId)
+            .Where(x => 
+                (x.CohortId == cohortId) 
+                || (x.CourseId == cohort.CourseId && x.CohortId == null)
+            )
             .Select(m => new
             {
                 id = m.Id,

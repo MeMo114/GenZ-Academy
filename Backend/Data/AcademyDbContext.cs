@@ -140,7 +140,7 @@ public class AcademyDbContext(DbContextOptions<AcademyDbContext> options)
         {
             entity.Property(x => x.Status).HasConversion<string>().HasMaxLength(50);
             entity.Property(x => x.SessionType).HasConversion<string>().HasMaxLength(50);
-            entity.HasIndex(x => new { x.CohortId, x.CourseSessionId }).IsUnique();
+            entity.HasIndex(x => new { x.CohortId, x.CourseSessionId });
         });
 
         builder.Entity<AttendanceRecord>(entity =>

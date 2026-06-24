@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { getCourseRoom, getUserApplications, getCourses } from "@/lib/api";
+import { getCourseRoom, getMyEnrollments, getCourses } from "@/lib/api";
 import { CourseRoomExperience } from "@/components/CourseRoomExperience";
-import type { CourseRoom, CourseApplication, Course } from "@/lib/types";
+import type { CourseRoom, Course } from "@/lib/types";
 import { useAuth } from "@/lib/auth-context";
 import { LockKey, ArrowLeft, Bell, CalendarBlank, Warning, ArrowRight, CaretRight } from "@phosphor-icons/react";
 import Link from "next/link";
@@ -16,35 +16,42 @@ export default function RoomPage() {
   const { user } = useAuth();
   
   const [room, setRoom] = useState<CourseRoom | null>(null);
-  const [applications, setApplications] = useState<CourseApplication[]>([]);
+  const [enrollments, setEnrollments] = useState<any[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const loadData = useCallback(async () => {
     let cancelled = false;
-    async function loadData() {
-      try {
-        const [roomData, appsData, coursesData] = await Promise.all([
-          getCourseRoom(id).catch(() => null),
-          getUserApplications().catch(() => []),
-          getCourses().catch(() => [])
-        ]);
+    try {
+      console.log("Loading room for id:", id);
+      const [roomData, enrollmentsData, coursesData] = await Promise.all([
+        getCourseRoom(id).catch((err) => { console.error("getCourseRoom error:", err); return null; }),
+        getMyEnrollments().catch((err) => { console.error("getMyEnrollments error:", err); return []; }),
+        getCourses().catch((err) => { console.error("getCourses error:", err); return []; })
+      ]);
 
-        if (!cancelled) {
-          setRoom(roomData);
-          setApplications(appsData);
-          setCourses(coursesData);
-          setLoading(false);
-        }
-      } catch (err) {
-        if (!cancelled) {
-          setLoading(false);
-        }
+      console.log("Room data:", roomData);
+      console.log("Enrollments data:", enrollmentsData);
+      console.log("Courses data:", coursesData);
+
+      if (!cancelled) {
+        setRoom(roomData);
+        setEnrollments(enrollmentsData);
+        setCourses(coursesData);
+        setLoading(false);
+      }
+    } catch (err) {
+      console.error("loadData error:", err);
+      if (!cancelled) {
+        setLoading(false);
       }
     }
-    loadData();
     return () => { cancelled = true; };
   }, [id]);
+
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   if (loading) {
     return (
@@ -59,14 +66,20 @@ export default function RoomPage() {
   const isStaff = userRole === "academy_admin" || userRole === "engineer" || userRole === "cta";
 
   if (!isStaff) {
-    // 1. Verify Application exists and has been approved & paid
-    const app = applications.find(a => a.courseId === id);
-    const course = courses.find(c => c.id === id);
+    // 1. Verify Enrollment exists
+    console.log("Checking enrollment...");
+    console.log("Enrollments array:", enrollments);
+    console.log("Looking for id:", id);
+    const enrollment = enrollments.find(e => {
+      const eCohortId = typeof e.cohortId === 'string' ? e.cohortId.toLowerCase() : String(e.cohortId).toLowerCase();
+      const idLower = id.toLowerCase();
+      console.log(`Comparing eCohortId (${eCohortId}) to idLower (${idLower}):`, eCohortId === idLower);
+      return eCohortId === idLower;
+    });
+    console.log("Found enrollment:", enrollment);
+    const course = courses.find(c => c.id === (room?.courseId));
 
-    const isAccepted = app ? (app.status.toLowerCase() === "accepted" || app.status.toLowerCase() === "approved" || app.status.toLowerCase() === "paid") : false;
-    const isPaid = app ? (app.paymentCompleted || app.status.toLowerCase() === "paid") : false;
-
-    if (!app || !isAccepted || !isPaid) {
+    if (!enrollment) {
       return (
         <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center p-6">
           <div className="w-full max-w-xl bg-white border border-black/5 rounded-[2.5rem] p-10 shadow-xl flex flex-col items-center text-center">
@@ -104,7 +117,8 @@ export default function RoomPage() {
     }
 
     // 2. Verify Course is Active
-    if (course && course.isActive === false) {
+    const courseForEnrollment = courses.find(c => c.id === enrollment.courseId);
+    if (courseForEnrollment && courseForEnrollment.isActive === false) {
       return (
         <div className="min-h-screen bg-[#f8f9fa] flex items-center justify-center p-6">
           <div className="w-full max-w-xl bg-white border border-black/5 rounded-[2.5rem] p-10 shadow-xl flex flex-col items-center text-center">
@@ -178,5 +192,5 @@ export default function RoomPage() {
     durationHours: course?.coreSessions ? `${course.coreSessions * 1.5} Hours` : "12.5 Hours"
   };
 
-  return <CourseRoomExperience room={enrichedRoom} />;
+  return <CourseRoomExperience room={enrichedRoom} onRefresh={loadData} />;
 }

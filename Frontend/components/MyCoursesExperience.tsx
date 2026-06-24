@@ -29,6 +29,7 @@ type Enrollment = {
   courseId: string;
   courseTitle: string;
   courseSlug: string;
+  cohortId: string;
   cohortName: string;
   status: string;
   progressPercent: number;
@@ -132,8 +133,8 @@ export function MyCoursesExperience({ enrollments }: { enrollments: Enrollment[]
 
                         {/* Control Room Link */}
                         <Link 
-                          href={`/room/${enrollment.courseId}`} 
-                          className="bg-white text-zinc-950 hover:bg-zinc-900 hover:text-white font-black px-6 py-3.5 rounded-2xl shadow-xl border border-black/5 hover:-translate-y-0.5 active:scale-95 transition-all duration-300 pointer-events-auto flex items-center gap-2 text-xs uppercase tracking-wider shrink-0"
+                          href={`/room/${enrollment.cohortId}`} 
+                          className="bg-white text-zinc-950 hover:bg-zinc-900 hover:text-white font-black px-6 py-3.5 rounded-2xl shadow-xl border border-black/5 hover:-translate-y-0.5 active:scale-95 transition-all duration-300 pointer-events-auto flex items-center gap-2 text-xs uppercase tracking-widest shrink-0"
                           style={{ color: '#09090b' }}
                         >
                           <span>Enter Room</span> <ArrowUpRight size={16} weight="bold" />
@@ -163,11 +164,11 @@ export function MyCoursesExperience({ enrollments }: { enrollments: Enrollment[]
                             <span className="block text-xs font-black text-zinc-800 truncate">{enrollment.currentSessionTitle}</span>
                           </div>
                           <Link 
-                            href={`/room/${enrollment.courseId}`}
-                            className="text-[10px] font-black text-brand uppercase tracking-wider hover:underline shrink-0 ml-4"
-                          >
-                            Resume Session →
-                          </Link>
+                          href={`/room/${enrollment.cohortId}`}
+                          className="text-[10px] font-black text-brand uppercase tracking-wider hover:underline shrink-0 ml-4"
+                        >
+                          Resume Session →
+                        </Link>
                         </div>
                       )}
 
@@ -177,7 +178,7 @@ export function MyCoursesExperience({ enrollments }: { enrollments: Enrollment[]
                         </span>
                         
                         <Link 
-                          href={`/room/${enrollment.courseId}`} 
+                          href={`/room/${enrollment.cohortId}`} 
                           className="text-zinc-900 hover:text-brand font-black text-xs uppercase tracking-widest flex items-center gap-1.5 transition-colors group/link"
                         >
                           <span>Room Terminal</span>

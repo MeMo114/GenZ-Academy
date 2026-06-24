@@ -182,6 +182,8 @@ export type SessionWeek = {
   scheduledAt: string;
   durationMinutes: number;
   status: string;
+  sessionLink?: string;
+  recordingUrl?: string;
 };
 
 export type CourseMaterial = {

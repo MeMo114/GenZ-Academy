@@ -37,14 +37,12 @@ import { useAuth } from "@/lib/auth-context";
 
 const studentNav = [
   { href: "/dashboard", icon: SquaresFour, label: "Dashboard" },
-  { href: "/applications", icon: ClipboardText, label: "Applications" },
   { href: "/courses", icon: BookBookmark, label: "Catalog" },
   { href: "/dashboard/courses", icon: Folder, label: "My Courses" },
   { href: "/playground", icon: CodesandboxLogoIcon, label: "Playground" },
   { href: "/dashboard/sessions", icon: CalendarCheck, label: "Sessions" },
   { href: "/dashboard/progress", icon: ChartLineUp, label: "Progress" },
   { href: "/dashboard/materials", icon: Files, label: "Materials" },
-  { href: "/dashboard/certificates", icon: Certificate, label: "Certificates" },
 ];
 
 const parentNav = [

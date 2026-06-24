@@ -191,36 +191,12 @@ export function CourseDetailExperience({ course, rounds }: { course: Course; rou
             </div>
 
             <div className="flex flex-col gap-3">
-              <button
-                onClick={handleToggleCart}
-                disabled={addingToCart}
-                className={`w-full py-4 rounded-2xl font-bold text-lg transition-all active:scale-[0.98] disabled:opacity-60 flex items-center justify-center gap-3 ${
-                  inCart
-                    ? 'bg-white border-2 border-zinc-900 text-zinc-900 hover:bg-zinc-50'
-                    : 'bg-brand hover:bg-brand-hover text-brand-fg shadow-[0_8px_20px_-6px_rgba(159,232,112,0.45)]'
-                }`}
-              >
-                <ShoppingCart size={22} weight={inCart ? "fill" : "bold"} />
-                {addingToCart ? "Updating..." : inCart ? "Remove from Cart" : "Add to Cart"}
-              </button>
-              
-              {user && (
-                <Link 
-                  href={`/apply?course=${course.slug}`} 
-                  className="w-full py-4 bg-zinc-950 hover:bg-zinc-800 text-white rounded-2xl font-black uppercase tracking-wider text-sm transition-all duration-300 flex items-center justify-center gap-3 active:scale-[0.98] shadow-md shadow-zinc-950/10"
-                >
-                  Apply Now <Sparkle size={18} weight="fill" />
-                </Link>
-              )}
-              
-              {!user && (
-                <Link 
-                  href={`/auth?returnUrl=/courses/${course.slug}`}
-                  className="w-full py-3 bg-white border border-black/10 text-zinc-700 rounded-2xl font-bold text-sm transition-colors text-center hover:border-black/30"
-                >
-                  Sign in to apply
-                </Link>
-              )}
+              <div className="w-full py-4 rounded-2xl font-bold text-lg text-center bg-zinc-100 border border-zinc-200 text-zinc-600">
+                Enrollment is by invitation only
+              </div>
+              <div className="text-center text-sm text-zinc-500 font-medium">
+                Contact the academy team to learn more about joining this track
+              </div>
             </div>
           </div>
 

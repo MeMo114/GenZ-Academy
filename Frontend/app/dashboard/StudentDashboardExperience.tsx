@@ -1,9 +1,9 @@
 "use client";
 
 import { useAuth } from "@/lib/auth-context";
-import { getMyProgress, getUserApplications, getLeaderboard, getMySessions, getCourses } from "@/lib/api";
+import { getMyProgress, getMyEnrollments, getLeaderboard, getMySessions, getCourses, getMyTasks } from "@/lib/api";
 import { useEffect, useState, useMemo } from "react";
-import type { StudentProgress, CourseApplication, Course, LeaderboardEntry } from "@/lib/types";
+import type { StudentProgress, Course, LeaderboardEntry, LearningTask } from "@/lib/types";
 import Link from "next/link";
 import Image from "next/image";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -37,26 +37,34 @@ interface Session {
 export function StudentDashboardExperience() {
   const { user } = useAuth();
   const [progress, setProgress] = useState<StudentProgress | null>(null);
-  const [apps, setApps] = useState<CourseApplication[]>([]);
+  const [enrollments, setEnrollments] = useState<any[]>([]);
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([]);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [tasks, setTasks] = useState<LearningTask[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     Promise.all([
       getMyProgress(),
-      getUserApplications(),
+      getMyEnrollments(),
       getLeaderboard(),
       getMySessions(),
       getCourses()
     ])
-      .then(([p, a, l, s, c]) => { 
+      .then(async ([p, e, l, s, c]) => { 
+        console.log("Enrollments data from API:", e);
         setProgress(p); 
-        setApps(a); 
+        setEnrollments(e); 
         setLeaderboard(l || []);
         setSessions(s || []);
         setCourses(c); 
+        const cohortIds = e.map((enrollment: any) => {
+          console.log("Single enrollment:", enrollment);
+          return enrollment.cohortId;
+        });
+        const t = await getMyTasks(cohortIds);
+        setTasks(t || []);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -70,15 +78,8 @@ export function StudentDashboardExperience() {
   const upcomingSessions = sessions.filter(s => s.isUpcoming).slice(0, 3);
   const currentRank = leaderboard.findIndex(e => e.studentUserId === user?.id) + 1;
   const enrolledCourseIds = useMemo(() => {
-    return new Set(
-      apps
-        .filter(a => {
-          const s = (a.status || "").toLowerCase();
-          return s === "accepted" || s === "approved" || s === "paid";
-        })
-        .map(a => a.courseId)
-    );
-  }, [apps]);
+    return new Set(enrollments.map((e: any) => e.courseId));
+  }, [enrollments]);
   const enrolledCourses = useMemo(() => {
     return courses.filter(c => enrolledCourseIds.has(c.id));
   }, [courses, enrolledCourseIds]);
@@ -218,10 +219,18 @@ export function StudentDashboardExperience() {
           </div>
           
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            {enrolledCourses.map((course, idx) => (
-              <Link 
-                key={course.id || idx} 
-                href={`/room/${course.id}`}
+            {enrollments.map((enrollment, idx) => {
+              console.log("Rendering enrollment:", enrollment);
+              const course = courses.find(c => {
+                const cId = typeof c.id === 'string' ? c.id.toLowerCase() : String(c.id).toLowerCase();
+                const eId = typeof enrollment.courseId === 'string' ? enrollment.courseId.toLowerCase() : String(enrollment.courseId).toLowerCase();
+                return cId === eId;
+              });
+              if (!course) return null;
+              return (
+                <Link 
+                  key={enrollment.id || idx} 
+                  href={`/room/${enrollment.cohortId}`}
                 className="bg-white rounded-[2.5rem] p-4 shadow-sm border border-black/5 flex flex-col group hover:shadow-xl hover:shadow-[#ff1a1a]/5 hover:border-[#ff1a1a]/20 transition-all duration-500 cursor-pointer active:scale-[0.98]"
               >
                 <div className="w-full aspect-video rounded-[2rem] bg-zinc-950 mb-4 relative overflow-hidden group-hover:shadow-lg group-hover:shadow-[#ff1a1a]/5 transition-all duration-500 border border-black/5">
@@ -272,8 +281,9 @@ export function StudentDashboardExperience() {
                   </div>
                 </div>
               </Link>
-            ))}
-            {enrolledCourses.length === 0 && (
+              );
+            })}
+            {enrollments.length === 0 && (
               <div className="col-span-3 text-center py-20 bg-white rounded-[3rem] border-2 border-dashed border-black/5">
                 <p className="text-sm font-bold text-zinc-400">Your learning path starts here. Browse the catalog to begin!</p>
               </div>

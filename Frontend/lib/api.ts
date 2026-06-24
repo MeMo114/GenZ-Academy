@@ -512,6 +512,8 @@ function makeDemoCourseRoom(id: string): CourseRoom {
       scheduledAt: new Date(Date.now() + i * 7 * 86400000).toISOString(),
       durationMinutes: i % 3 === 2 ? 240 : 90,
       status: i === 0 ? "Live" : i < 2 ? "Completed" : "Scheduled",
+      sessionLink: i === 0 ? "https://zoom.us/j/123456789" : undefined,
+      recordingUrl: i < 2 ? "https://example.com/recording" : undefined,
     })),
     materials: [
       { id: "m1", title: "Session Playbook PDF", materialType: "Pdf", url: "#", isDownloadable: true },
@@ -538,8 +540,8 @@ function makeDemoCourseRoom(id: string): CourseRoom {
 }
 
 // ─── Tasks ────────────────────────────────────────────────────────────────────
-export const getMyTasks = () =>
-  apiGet<LearningTask[]>("/api/learning/tasks", []);
+export const getMyTasks = (cohortIds?: string[]) =>
+  apiGet<LearningTask[]>(`/api/learning/tasks${cohortIds && cohortIds.length > 0 ? `?cohortIds=${cohortIds.join('&cohortIds=')}` : ''}`, []);
 
 export const submitTask = (taskId: string, userId: string, submissionData: { submissionUrl?: string; repositoryUrl?: string; submissionText?: string }) =>
   apiPost<void>("/api/learning/tasks/submissions", { learningTaskId: taskId, studentUserId: userId, ...submissionData });

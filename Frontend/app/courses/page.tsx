@@ -2,20 +2,16 @@
 
 import { useEffect, useState } from "react";
 import { getCourses } from "@/lib/api";
-import { useCart } from "@/lib/cart-context";
-import { useToast } from "@/lib/toast-context";
 import type { Course } from "@/lib/types";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowRight, Sparkle, BookmarkSimple, ShoppingCart, MagnifyingGlass } from "@phosphor-icons/react";
+import { ArrowRight, MagnifyingGlass } from "@phosphor-icons/react";
 import { CourseIcon } from "@/components/IconMapper";
 
 export default function CoursesCatalogPage() {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
-  const { addItem, removeItem, isInCart, cart } = useCart();
-  const { toast } = useToast();
   const searchParams = useSearchParams();
   const query = searchParams.get("q") || "";
   const [searchQuery, setSearchQuery] = useState(query);
@@ -42,16 +38,6 @@ export default function CoursesCatalogPage() {
       label: lvl
     }))
   ];
-
-  const handleAdd = async (course: Course) => {
-    if (isInCart(course.id)) {
-      await removeItem(course.id);
-      toast(`${course.title} removed from cart`, "info");
-    } else {
-      await addItem(course);
-      toast(`${course.title} added to cart`, "success");
-    }
-  };
 
   return (
     <div className="w-full px-4 md:px-10 py-12 bg-canvas-soft min-h-screen">
@@ -112,20 +98,13 @@ export default function CoursesCatalogPage() {
           return (
             <div 
               key={course.id} 
-              className={`${theme.bg} rounded-[2rem] p-6 shadow-sm relative group hover:-translate-y-1 transition-transform duration-300 flex flex-col ${
-                isInCart(course.id) ? "ring-4 ring-zinc-950 border-transparent shadow-lg scale-[1.01]" : "border border-black/5"
-              }`}
+              className={`${theme.bg} rounded-[2rem] p-6 shadow-sm relative group hover:-translate-y-1 transition-transform duration-300 flex flex-col border border-black/5`}
             >
               <div className="flex justify-between items-start mb-6">
                 <div className="flex flex-col gap-1">
                   <span className={`px-3 py-1 ${theme.badgeBg} ${theme.badgeText} text-[10px] font-bold rounded-lg ${theme.border !== 'border-brand-hover' ? 'border ' + theme.border : ''} w-fit`}>
                     {course.level} · {course.minimumAge}+{course.maximumAge ? `-${course.maximumAge}` : ""}
                   </span>
-                  {isInCart(course.id) && (
-                    <span className="text-[9px] font-black tracking-widest text-zinc-950 uppercase bg-brand-hover border border-zinc-950/20 px-2 py-0.5 rounded-full w-fit">
-                      Selected in Cart
-                    </span>
-                  )}
                 </div>
                 <div className={`w-10 h-10 rounded-xl flex items-center justify-center bg-white/50 shadow-inner`}>
                   <CourseIcon iconName={course.iconName} className="w-5 h-5 text-zinc-900" size={20} />
@@ -152,22 +131,6 @@ export default function CoursesCatalogPage() {
                 <Link href={`/courses/${course.slug}`} className="text-zinc-900 font-bold text-sm hover:underline">
                   View Details
                 </Link>
-                <div className="flex gap-2">
-                  <button 
-                    onClick={() => handleAdd(course)}
-                    className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors border active:scale-90 ${
-                      isInCart(course.id)
-                        ? 'bg-zinc-900 text-white border-zinc-900 hover:bg-black'
-                        : 'bg-white/60 hover:bg-white text-zinc-700 border-black/5'
-                    }`}
-                    title={isInCart(course.id) ? "Remove from cart" : "Add to cart"}
-                  >
-                    <ShoppingCart size={18} weight={isInCart(course.id) ? "fill" : "bold"} />
-                  </button>
-                  <Link href={`/apply?course=${course.slug}`} className="px-5 py-2.5 bg-brand hover:bg-brand-hover text-brand-fg rounded-full font-bold text-sm shadow-md transition-colors flex items-center gap-2">
-                    Apply <Sparkle size={16} weight="fill" />
-                  </Link>
-                </div>
               </div>
             </div>
           );

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef, type ReactNode, useCallback } from "react";
 import { useAuth } from "@/lib/auth-context";
-import type { CourseRoom, SessionWeek, LearningTask, QuizItem, QuizAttemptSummary } from "@/lib/types";
+import type { CourseRoom, SessionWeek, LearningTask } from "@/lib/types";
 import { 
   Books, MonitorPlay, UsersThree, Trophy, 
   ArrowRight, ArrowLeft, PlayCircle, LockKey, CheckCircle,
@@ -18,7 +18,7 @@ import Link from "next/link";
 import Image from "next/image";
 import { motion, AnimatePresence } from "framer-motion";
 import { useToast } from "@/lib/toast-context";
-import { submitTask, uploadCourseMaterial, updateCourseStep, requestZoomSignature, getCourseRoomQuizzes, getRecommendedCourses } from "@/lib/api";
+import { submitTask, uploadCourseMaterial, updateCourseStep, requestZoomSignature, getRecommendedCourses } from "@/lib/api";
 
 const COURSE_IMAGES: Record<string, string> = {
   "scratch": "https://images.unsplash.com/photo-1607799279861-4dd421887fb3?auto=format&fit=crop&w=1280&q=85",
@@ -28,16 +28,14 @@ const COURSE_IMAGES: Record<string, string> = {
   "web-app-ai": "https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1280&q=85",
 };
 
-export function CourseRoomExperience({ room, isAdminView = false }: { room: CourseRoom, isAdminView?: boolean }) {
+export function CourseRoomExperience({ room, isAdminView = false, onRefresh }: { room: CourseRoom, isAdminView?: boolean, onRefresh?: () => void }) {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<"overview" | "sessions" | "curriculum" | "materials" | "next-zoom" | "quizzes" | "tasks" | "classmates">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "sessions" | "curriculum" | "materials" | "next-zoom" | "tasks" | "classmates">("overview");
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [zoomLoading, setZoomLoading] = useState(false);
   const [zoomSignature, setZoomSignature] = useState<{ signature: string; sdkKey: string } | null>(null);
   const zoomRootRef = useRef<HTMLDivElement>(null);
   const { toast } = useToast();
-  const [courseQuizzes, setCourseQuizzes] = useState<QuizItem[]>([]);
-  const [quizLoading, setQuizLoading] = useState(false);
   const [recommendedCourses, setRecommendedCourses] = useState<any[]>([]);
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -82,15 +80,7 @@ export function CourseRoomExperience({ room, isAdminView = false }: { room: Cour
     return room;
   }, [room]);
 
-  useEffect(() => {
-    if (activeTab === 'quizzes') {
-      setQuizLoading(true);
-      getCourseRoomQuizzes(room.courseRoundId)
-        .then(setCourseQuizzes)
-        .catch(() => setCourseQuizzes(room.quizzes || []))
-        .finally(() => setQuizLoading(false));
-    }
-  }, [activeTab, room.courseRoundId, room.quizzes, refreshKey]);
+
 
   useEffect(() => {
     getRecommendedCourses()
@@ -108,25 +98,22 @@ export function CourseRoomExperience({ room, isAdminView = false }: { room: Cour
   const progressPercentage = room.progress?.completionPercent ?? ((room.weeks.filter(w => w.status === "Completed").length / (room.weeks.length || 1)) * 100);
   const nextSession = room.weeks.find(w => w.status !== "Completed") || room.weeks[0];
 
-  const handleNativeZoomJoin = () => {
-    if (isHost && room.zoomStartUrl) {
-      window.open(room.zoomStartUrl, '_blank');
-      setIsLiveActive(false);
-    } else if (room.zoomJoinUrl) {
-      window.open(room.zoomJoinUrl, '_blank');
-      setIsLiveActive(false);
+  const handleJoinSession = (week: any) => {
+    // First try session-specific link, then cohort-level links
+    const joinUrl = week.sessionLink || room.zoomJoinUrl || room.zoomStartUrl;
+    if (joinUrl) {
+      window.open(joinUrl, '_blank');
     } else {
-      toast("No Zoom meeting URL configured", "error");
+      toast("No session link configured", "error");
     }
   };
 
-  const handleJoinLive = () => {
-    if (!room.zoomMeetingId) {
-      toast("No live session configured for this course", "error");
-      return;
+  const handleWatchRecording = (week: any) => {
+    if (week.recordingUrl) {
+      window.open(week.recordingUrl, '_blank');
+    } else {
+      toast("No recording available for this session", "error");
     }
-    // Launch advanced native Zoom intent instead of web SDK
-    setIsLiveActive(true);
   };
 
   const handleCloseLive = () => {
@@ -160,7 +147,15 @@ export function CourseRoomExperience({ room, isAdminView = false }: { room: Cour
                   For the best experience, including screen sharing, breakout rooms, and HD video, we recommend joining using the native Zoom desktop or mobile application.
                 </p>
                 <div className="flex flex-col gap-3">
-                  <button onClick={handleNativeZoomJoin} className="w-full py-4 bg-[#ff1a1a] text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-[#e01616] transition-colors shadow-lg shadow-[#ff1a1a]/30 flex items-center justify-center gap-2">
+                  <button onClick={() => {
+                    const joinUrl = currentWeek.sessionLink || room.zoomJoinUrl || room.zoomStartUrl;
+                    if (joinUrl) {
+                      window.open(joinUrl, '_blank');
+                      setIsLiveActive(false);
+                    } else {
+                      toast("No session link configured", "error");
+                    }
+                  }} className="w-full py-4 bg-[#ff1a1a] text-white rounded-2xl font-black text-sm uppercase tracking-widest hover:bg-[#e01616] transition-colors shadow-lg shadow-[#ff1a1a]/30 flex items-center justify-center gap-2">
                     <VideoCamera size={20} weight="fill" /> 
                     {isHost ? "Start as Instructor (Host)" : "Join Native App"}
                   </button>
@@ -229,19 +224,12 @@ export function CourseRoomExperience({ room, isAdminView = false }: { room: Cour
                    <h4 className="text-lg font-black text-zinc-900">{room.instructorName || "Academy Mentor"}</h4>
                    <div className="flex items-center gap-3 text-[10px] font-bold text-zinc-400 uppercase tracking-widest mt-0.5">
                       <span className="text-[#ff1a1a]">Verified Instructor</span>
-                      <span className="flex items-center gap-1"><UsersThree weight="fill" size={14} /> 12K Students</span>
+                      <span className="flex items-center gap-1"><UsersThree weight="fill" size={14} /> {room.roundStudentCount || 0} Students</span>
                    </div>
                 </div>
-                <button className="ml-4 px-6 py-2.5 rounded-full border border-[#ff1a1a]/20 text-[11px] font-black uppercase tracking-widest text-[#ff1a1a] hover:bg-[#ff1a1a] hover:text-white transition-all shadow-sm">
-                   Follow
-                </button>
              </div>
              
              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-1.5 text-zinc-400 hover:text-zinc-900 cursor-pointer transition-colors">
-                   <ShareNetwork size={20} weight="bold" />
-                   <span className="text-xs font-bold">128</span>
-                </div>
                 <div className="flex items-center gap-1.5 text-zinc-400 hover:text-[#ff1a1a] cursor-pointer transition-colors">
                    <CheckCircle size={20} weight="bold" />
                    <span className="text-xs font-bold">Enrolled</span>
@@ -254,10 +242,13 @@ export function CourseRoomExperience({ room, isAdminView = false }: { room: Cour
 
           {/* Tabs Navigation */}
           <div className="flex items-center gap-2 border-b border-black/5 px-2 overflow-x-auto scrollbar-none">
-             {(['overview', 'curriculum', 'materials', 'next-zoom', 'quizzes', 'tasks', 'classmates'] as const).map(tab => (
+             {(['overview', 'curriculum', 'materials', 'next-zoom', 'tasks', 'classmates'] as const).map(tab => (
                <button
                  key={tab}
-                 onClick={() => setActiveTab(tab as any)}
+                 onClick={() => {
+                   setActiveTab(tab as any);
+                   onRefresh?.();
+                 }}
                  className={`px-6 py-4 text-xs font-black uppercase tracking-widest transition-all relative shrink-0 ${
                    activeTab === tab ? 'text-[#ff1a1a]' : 'text-zinc-400 hover:text-zinc-600'
                  }`}
@@ -344,7 +335,7 @@ export function CourseRoomExperience({ room, isAdminView = false }: { room: Cour
                                     </div>
                                     <div className="flex-1 min-w-0">
                                        <p className="text-xs font-bold text-zinc-900 truncate">{week.weekTitle}</p>
-                                       <p className="text-[9px] font-medium text-zinc-400">{week.durationMinutes}m • Module {i+1} {week.status === 'Completed' ? '✓' : week.status === 'Live' ? '● Live' : '🔒'}</p>
+                                       <p className="text-[9px] font-medium text-zinc-400">{new Date(week.scheduledAt).toLocaleDateString()} • {week.durationMinutes}m • Module {i+1} {week.status === 'Completed' ? '✓' : week.status === 'Live' ? '● Live' : ''}</p>
                                     </div>
                                  </div>
                               ))}
@@ -386,20 +377,23 @@ export function CourseRoomExperience({ room, isAdminView = false }: { room: Cour
                             {idx + 1}
                          </div>
                          <div className="flex-1">
-                            <h4 className="text-base font-black text-zinc-900 group-hover:text-[#ff1a1a] transition-colors">{week.weekTitle}</h4>
-                            <div className="flex items-center gap-4 mt-1">
-                               <span className="text-[10px] font-black uppercase tracking-widest text-[#ff1a1a] flex items-center gap-1.5">
-                                  <Video size={14} weight="fill" /> {week.sessionType}
-                               </span>
-                               <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-1.5">
-                                  <Clock size={14} weight="bold" /> {week.durationMinutes} Min
-                               </span>
+                                <h4 className="text-base font-black text-zinc-900 group-hover:text-[#ff1a1a] transition-colors">{week.weekTitle}</h4>
+                                <div className="flex items-center gap-4 mt-1 flex-wrap">
+                                    <span className="text-[10px] font-black uppercase tracking-widest text-[#ff1a1a] flex items-center gap-1.5">
+                                        <Video size={14} weight="fill" /> {week.sessionType}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-1.5">
+                                        <Calendar size={14} weight="bold" /> {new Date(week.scheduledAt).toLocaleDateString()}
+                                    </span>
+                                    <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest flex items-center gap-1.5">
+                                        <Clock size={14} weight="bold" /> {new Date(week.scheduledAt).toLocaleTimeString()} · {week.durationMinutes} Min
+                                    </span>
+                                </div>
                             </div>
-                         </div>
                          {week.status === 'Live' ? (
-                           <button onClick={handleJoinLive} className="px-6 py-3 bg-[#ff1a1a] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-[#ff1a1a]/20 active:scale-95 transition-transform">Join Live</button>
+                           <button onClick={() => handleJoinSession(week)} className="px-6 py-3 bg-[#ff1a1a] text-white rounded-2xl text-[10px] font-black uppercase tracking-widest shadow-xl shadow-[#ff1a1a]/20 active:scale-95 transition-transform">Join Live</button>
                          ) : week.status === 'Completed' ? (
-                           <button className="flex items-center gap-2 px-5 py-3 border border-black/5 rounded-2xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:bg-zinc-900 hover:text-white transition-all">
+                           <button onClick={() => handleWatchRecording(week)} className="flex items-center gap-2 px-5 py-3 border border-black/5 rounded-2xl text-[10px] font-black uppercase tracking-widest text-zinc-500 hover:bg-zinc-900 hover:text-white transition-all">
                               <PlayCircle size={18} /> Watch Recording
                            </button>
                          ) : (
@@ -450,7 +444,7 @@ export function CourseRoomExperience({ room, isAdminView = false }: { room: Cour
                            )}
 
                            <div className="flex items-center gap-6">
-                              <button onClick={handleJoinLive} className="px-12 py-5 bg-[#ff1a1a] text-white rounded-[2rem] text-sm font-black uppercase tracking-widest hover:bg-white hover:text-zinc-900 transition-all shadow-2xl shadow-[#ff1a1a]/40 active:scale-95">
+                              <button onClick={() => handleJoinSession(nextSession)} className="px-12 py-5 bg-[#ff1a1a] text-white rounded-[2rem] text-sm font-black uppercase tracking-widest hover:bg-white hover:text-zinc-900 transition-all shadow-2xl shadow-[#ff1a1a]/40 active:scale-95">
                                  {isHost ? "Start Session" : "Join Waiting Room"}
                               </button>
                               <button className="px-8 py-5 border border-white/20 rounded-[2rem] text-xs font-black uppercase tracking-widest hover:bg-white/10 transition-all">
@@ -489,49 +483,6 @@ export function CourseRoomExperience({ room, isAdminView = false }: { room: Cour
                     )}
                  </motion.div>
                )}
-
-               {activeTab === 'quizzes' && (
-                  <motion.div key="quizzes" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                    {quizLoading ? (
-                      <div className="col-span-1 md:col-span-2 grid grid-cols-1 md:grid-cols-2 gap-4">
-                        {[1, 2].map(i => (
-                          <div key={i} className="p-6 bg-white rounded-3xl border border-black/5 animate-pulse">
-                            <div className="w-12 h-12 rounded-2xl bg-zinc-200 mb-4" />
-                            <div className="h-5 bg-zinc-200 rounded w-3/4 mb-2" />
-                            <div className="h-3 bg-zinc-100 rounded w-1/2 mb-4" />
-                            <div className="h-10 bg-zinc-200 rounded-xl w-full" />
-                          </div>
-                        ))}
-                      </div>
-                    ) : courseQuizzes.length > 0 ? courseQuizzes.map((quiz, i) => (
-                      <div key={quiz.id || i} className="p-6 bg-white rounded-3xl border border-black/5 shadow-sm flex flex-col gap-4 hover:shadow-lg transition-all hover:-translate-y-0.5">
-                        <div className="w-12 h-12 rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center">
-                          <PencilSimpleLine size={24} weight="bold" />
-                        </div>
-                        <div>
-                          <h4 className="text-base font-black text-zinc-900">{quiz.title}</h4>
-                          <p className="text-xs text-zinc-500 font-medium mt-1">{quiz.questionsCount || 0} Questions · {quiz.timeLimitMinutes || 15} Minutes · {quiz.xpReward} XP</p>
-                          <span className="inline-block mt-1 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-zinc-100 text-zinc-500">{quiz.quizType}</span>
-                        </div>
-                        <Link href={`/quiz?quizId=${quiz.id}`} className="mt-auto py-3 bg-zinc-900 text-white text-center rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-colors">Start Quiz</Link>
-                      </div>
-                    )) : room.quizzes && room.quizzes.length > 0 ? room.quizzes.map((quiz, i) => (
-                      <div key={quiz.id || i} className="p-6 bg-white rounded-3xl border border-black/5 shadow-sm flex flex-col gap-4 hover:shadow-lg transition-all hover:-translate-y-0.5">
-                        <div className="w-12 h-12 rounded-2xl bg-orange-50 text-orange-500 flex items-center justify-center">
-                          <PencilSimpleLine size={24} weight="bold" />
-                        </div>
-                        <div>
-                          <h4 className="text-base font-black text-zinc-900">{quiz.title}</h4>
-                          <p className="text-xs text-zinc-500 font-medium mt-1">{quiz.questionsCount || 0} Questions · {quiz.timeLimitMinutes || 15} Minutes · {quiz.xpReward} XP</p>
-                          <span className="inline-block mt-1 text-[9px] font-black uppercase tracking-widest px-2 py-0.5 rounded bg-zinc-100 text-zinc-500">{quiz.quizType}</span>
-                        </div>
-                        <Link href={`/quiz?quizId=${quiz.id}`} className="mt-auto py-3 bg-zinc-900 text-white text-center rounded-xl text-[10px] font-black uppercase tracking-widest hover:bg-black transition-colors">Start Quiz</Link>
-                      </div>
-                    )) : (
-                      <div className="col-span-1 md:col-span-2 p-12 text-center text-zinc-500 font-medium">No quizzes available for this course yet.</div>
-                    )}
-                  </motion.div>
-                )}
 
                {activeTab === 'tasks' && (
                  <motion.div key="tasks" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -788,6 +739,10 @@ function CurriculumCard({ week, idx, isExpanded, onToggle, isAdmin }: { week: Se
 function TaskCard({ task, isAdmin, userId }: { task: LearningTask, isAdmin: boolean, userId?: string }) {
   const isPending = task.status === 'pending';
   const [taskStatus, setTaskStatus] = useState(task.status);
+
+  useEffect(() => {
+    setTaskStatus(task.status);
+  }, [task.status]);
   const { toast } = useToast();
   
   // Submit modal states
@@ -1064,8 +1019,35 @@ function TaskCard({ task, isAdmin, userId }: { task: LearningTask, isAdmin: bool
 }
 
 function MaterialItem({ material, isAdmin }: { material: any, isAdmin: boolean }) {
+  const handleClick = () => {
+    if (!material.url) return;
+    // If URL is not fully qualified, prepend backend base URL
+    let fullUrl = material.url;
+    if (!material.url.startsWith("http://") && !material.url.startsWith("https://")) {
+      fullUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5079"}${material.url}`;
+    }
+    window.open(fullUrl, "_blank");
+  };
+
+  const handleDownload = (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!material.url) return;
+    let fullUrl = material.url;
+    if (!material.url.startsWith("http://") && !material.url.startsWith("https://")) {
+      fullUrl = `${process.env.NEXT_PUBLIC_API_URL || "http://localhost:5079"}${material.url}`;
+    }
+    // Create a temporary anchor to trigger download
+    const a = document.createElement("a");
+    a.href = fullUrl;
+    a.target = "_blank";
+    a.download = material.title || "material";
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+  };
+
   return (
-    <div className="flex items-center justify-between p-6 rounded-[2rem] bg-zinc-50 hover:bg-brand-neutral/10 transition-all group cursor-pointer border border-transparent hover:border-brand-neutral/30">
+    <div onClick={handleClick} className="flex items-center justify-between p-6 rounded-[2rem] bg-zinc-50 hover:bg-brand-neutral/10 transition-all group cursor-pointer border border-transparent hover:border-brand-neutral/30">
        <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-2xl bg-white border border-black/5 flex items-center justify-center shadow-sm">
             {material.materialType === 'Pdf' ? <FilePdf size={24} className="text-[#EF4444]" weight="fill" /> : <Video size={24} className="text-[#0284c7]" weight="fill" />}
@@ -1078,7 +1060,9 @@ function MaterialItem({ material, isAdmin }: { material: any, isAdmin: boolean }
        <div className="flex items-center gap-3">
           {isAdmin && <button className="p-2 hover:bg-red-50 text-red-400 hover:text-red-600 rounded-lg transition-colors"><X size={16} weight="bold" /></button>}
           {material.isDownloadable && (
-            <DownloadSimple size={20} className="text-zinc-300 group-hover:text-zinc-900 transition-colors" />
+            <button onClick={handleDownload} className="p-2 hover:bg-zinc-200 rounded-lg transition-colors">
+              <DownloadSimple size={20} className="text-zinc-300 group-hover:text-zinc-900 transition-colors" />
+            </button>
           )}
        </div>
     </div>

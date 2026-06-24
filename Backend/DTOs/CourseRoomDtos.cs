@@ -37,7 +37,9 @@ public record CourseRoomWeekDto(
     SessionType SessionType,
     DateTimeOffset ScheduledAt,
     int DurationMinutes,
-    SessionStatus Status);
+    SessionStatus Status,
+    string? SessionLink,
+    string? RecordingUrl);
 
 public record CourseMaterialDto(Guid Id, string Title, CourseMaterialType MaterialType, string Url, bool IsDownloadable);
 

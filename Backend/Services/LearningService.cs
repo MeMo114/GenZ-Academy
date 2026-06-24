@@ -70,7 +70,7 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
         return task.Id;
     }
 
-    public async Task<Guid> SubmitTaskAsync(TaskSubmitRequest request, CancellationToken cancellationToken = default)
+    public async Task<Guid> SubmitTaskAsync(Guid studentUserId, TaskSubmitRequest request, CancellationToken cancellationToken = default)
     {
         var task = await db.LearningTasks.FirstOrDefaultAsync(x => x.Id == request.LearningTaskId, cancellationToken)
             ?? throw new InvalidOperationException("Task not found.");
@@ -78,7 +78,7 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
         var submission = new TaskSubmission
         {
             LearningTaskId = request.LearningTaskId,
-            StudentUserId = request.StudentUserId,
+            StudentUserId = studentUserId,
             SubmissionUrl = request.SubmissionUrl,
             RepositoryUrl = request.RepositoryUrl,
             SubmissionText = request.SubmissionText,
@@ -87,7 +87,7 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
 
         db.TaskSubmissions.Add(submission);
         await db.SaveChangesAsync(cancellationToken);
-        await notifications.QueueAsync(request.StudentUserId, "Task submitted", "Your task was submitted successfully.", [NotificationChannel.InApp, NotificationChannel.Email], cancellationToken);
+        await notifications.QueueAsync(studentUserId, "Task submitted", "Your task was submitted successfully.", [NotificationChannel.InApp, NotificationChannel.Email], cancellationToken);
         return submission.Id;
     }
 
@@ -170,7 +170,7 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
             .Where(x => x.CourseId == courseId && x.IsPublished)
             .OrderBy(x => x.WeekNumber)
             .ThenBy(x => x.SortOrder)
-            .Select(x => new CourseRoomWeekDto(x.Id, x.WeekNumber, x.Title, x.SessionType, DateTimeOffset.UtcNow, 90, SessionStatus.Scheduled)) // Simple mapping for now
+            .Select(x => new CourseRoomWeekDto(x.Id, x.WeekNumber, x.Title, x.SessionType, DateTimeOffset.UtcNow, 90, SessionStatus.Scheduled, null, null)) // Simple mapping for now
             .ToListAsync(cancellationToken);
 
         var materials = await db.CourseMaterials
@@ -230,13 +230,27 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
             })
             .ToListAsync(cancellationToken);
 
-        var tasks = dbTasks.Select(x => new CourseTaskDto(
-            x.Id, x.Title, x.Description,
-            x.TaskType, x.SubmissionType,
-            x.MaxScore, x.XpReward, x.IsRequired,
-            x.Status, x.Score, x.Feedback,
-            x.SessionScheduledAt?.AddHours(x.DueHoursAfterSession) ?? x.SessionScheduledAt
-        )).ToList();
+        var tasks = dbTasks.Select(x => 
+        {
+            // Map status correctly
+            string status = x.Status ?? "pending";
+            if (status == "Graded")
+            {
+                status = "graded";
+            }
+            else if (status != "pending")
+            {
+                status = "submitted";
+            }
+            
+            return new CourseTaskDto(
+                x.Id, x.Title, x.Description,
+                x.TaskType, x.SubmissionType,
+                x.MaxScore, x.XpReward, x.IsRequired,
+                status, x.Score, x.Feedback,
+                x.SessionScheduledAt?.AddHours(x.DueHoursAfterSession) ?? x.SessionScheduledAt
+            );
+        }).ToList();
 
         var quizList = enrollment.CohortId.HasValue
             ? await db.Quizzes.AsNoTracking()
@@ -346,11 +360,16 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
 
     public async Task<IReadOnlyList<CourseMaterialDto2>> GetMyMaterialsAsync(Guid userId, Guid? courseId, CancellationToken cancellationToken = default)
     {
-        var cohortIds = await db.Enrollments.Where(x => x.StudentUserId == userId).Select(x => x.CohortId).ToListAsync(cancellationToken);
+        var enrollments = await db.Enrollments.Where(x => x.StudentUserId == userId).ToListAsync(cancellationToken);
+        var cohortIds = enrollments.Select(x => x.CohortId).ToList();
+        var courseIds = enrollments.Select(x => x.CourseId).ToList();
         
         var materials = await db.CourseMaterials
             .AsNoTracking()
-            .Where(x => x.IsPublished && (x.CohortId == null || cohortIds.Contains(x.CohortId.Value)))
+            .Where(x => x.IsPublished)
+            .Where(x => 
+                (x.CohortId != null && cohortIds.Contains(x.CohortId.Value)) 
+                || courseIds.Contains(x.CourseId))
             .Where(x => courseId == null || x.CourseId == courseId)
             .OrderBy(x => x.Title)
             .Select(x => new CourseMaterialDto2(x.Id, x.Title, x.MaterialType.ToString(), x.Url ?? "", x.IsDownloadable, null, false))
@@ -426,7 +445,7 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
                 x.DueHoursAfterSession,
                 x.CohortId,
                 x.CourseSessionId,
-                Status = x.Submissions.Where(s => s.StudentUserId == userId).Select(s => s.Status.ToString()).FirstOrDefault(),
+                Status = x.Submissions.Where(s => s.StudentUserId == userId).Select(s => (string?)s.Status.ToString()).FirstOrDefault(),
                 Score = x.Submissions.Where(s => s.StudentUserId == userId).Select(s => (int?)s.Score).FirstOrDefault(),
                 Feedback = x.Submissions.Where(s => s.StudentUserId == userId).Select(s => s.Feedback).FirstOrDefault()
             })
@@ -440,11 +459,22 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
                 .Select(s => (DateTimeOffset?)s.ScheduledAt)
                 .FirstOrDefaultAsync(cancellationToken);
                 
+            // Map status correctly
+            string status = x.Status ?? "pending";
+            if (status == "Graded")
+            {
+                status = "graded";
+            }
+            else if (status != "pending")
+            {
+                status = "submitted";
+            }
+                
             tasks.Add(new CourseTaskDto(
                 x.Id, x.Title, x.Description,
                 x.TaskType, x.SubmissionType,
                 x.MaxScore, x.XpReward, x.IsRequired,
-                x.Status, x.Score, x.Feedback,
+                status, x.Score, x.Feedback,
                 scheduledAt?.AddHours(x.DueHoursAfterSession) ?? scheduledAt
             ));
         }

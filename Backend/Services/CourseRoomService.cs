@@ -20,16 +20,50 @@ public class CourseRoomService(AcademyDbContext db) : ICourseRoomService
         var isAdminStaff = user != null && (user.RoleKey == AcademyRole.AcademyAdmin || user.RoleKey == AcademyRole.Engineer || user.RoleKey == AcademyRole.Cta);
 
         var accepted = isAdminStaff || await db.CourseApplications.AnyAsync(x => x.CohortId == courseRoundId && x.StudentUserId == studentUserId && x.Status == ApplicationStatus.Accepted, cancellationToken);
-        var enrolled = isAdminStaff || await db.CohortEnrollments.AnyAsync(x => x.CohortId == courseRoundId && x.StudentUserId == studentUserId, cancellationToken);
-        var access = isAdminStaff || accepted || enrolled ? CourseAccessStatus.Open : CourseAccessStatus.PendingApproval;
+        var enrolledViaCohort = isAdminStaff || await db.CohortEnrollments.AnyAsync(x => x.CohortId == courseRoundId && x.StudentUserId == studentUserId, cancellationToken);
+        var enrolledViaEnrollment = isAdminStaff || await db.Enrollments.AnyAsync(x => x.CohortId == courseRoundId && x.StudentUserId == studentUserId, cancellationToken);
+        var access = isAdminStaff || accepted || enrolledViaCohort || enrolledViaEnrollment ? CourseAccessStatus.Open : CourseAccessStatus.PendingApproval;
 
+        var now = DateTimeOffset.UtcNow;
         var weeks = access == CourseAccessStatus.Open
             ? await db.SessionInstances.AsNoTracking()
                 .Where(x => x.CohortId == courseRoundId)
                 .OrderBy(x => x.WeekNumber)
                 .ThenBy(x => x.ScheduledAt)
-                .Select(x => new CourseRoomWeekDto(x.Id, x.WeekNumber, x.WeekTitle, x.SessionType, x.ScheduledAt, x.DurationMinutes, x.Status))
+                .Select(x => new 
+                {
+                    x.Id,
+                    x.WeekNumber,
+                    x.WeekTitle,
+                    x.SessionType,
+                    x.ScheduledAt,
+                    x.DurationMinutes,
+                    x.Status,
+                    x.SessionLink,
+                    x.RecordingUrl
+                })
                 .ToListAsync(cancellationToken)
+                .ContinueWith(t => t.Result.Select(x => 
+                {
+                    var calculatedStatus = x.Status;
+                    if (x.Status == SessionStatus.Completed)
+                    {
+                        calculatedStatus = SessionStatus.Completed;
+                    }
+                    else if (x.ScheduledAt <= now && x.ScheduledAt.AddMinutes(x.DurationMinutes) >= now)
+                    {
+                        calculatedStatus = SessionStatus.Live;
+                    }
+                    else if (x.ScheduledAt <= now)
+                    {
+                        calculatedStatus = SessionStatus.Completed;
+                    }
+                    else
+                    {
+                        calculatedStatus = SessionStatus.Scheduled;
+                    }
+                    return new CourseRoomWeekDto(x.Id, x.WeekNumber, x.WeekTitle, x.SessionType, x.ScheduledAt, x.DurationMinutes, calculatedStatus, x.SessionLink, x.RecordingUrl);
+                }).ToList(), cancellationToken)
             : [];
 
         var materials = access == CourseAccessStatus.Open
@@ -61,7 +95,7 @@ public class CourseRoomService(AcademyDbContext db) : ICourseRoomService
                     x.XpReward,
                     x.IsRequired,
                     x.DueHoursAfterSession,
-                    Status = x.Submissions.Where(s => s.StudentUserId == studentUserId).Select(s => s.Status.ToString()).FirstOrDefault(),
+                    SubmissionStatus = x.Submissions.Where(s => s.StudentUserId == studentUserId).Select(s => (SubmissionStatus?)s.Status).FirstOrDefault(),
                     Score = x.Submissions.Where(s => s.StudentUserId == studentUserId).Select(s => (int?)s.Score).FirstOrDefault(),
                     Feedback = x.Submissions.Where(s => s.StudentUserId == studentUserId).Select(s => s.Feedback).FirstOrDefault(),
                     SessionScheduledAt = db.SessionInstances
@@ -70,18 +104,38 @@ public class CourseRoomService(AcademyDbContext db) : ICourseRoomService
                         .FirstOrDefault()
                 })
                 .ToListAsync(cancellationToken)
-            : new List<System.Dynamic.ExpandoObject>().Select(x => new { Id = Guid.Empty, Title = "", Description = "", TaskType = "", SubmissionType = "", MaxScore = 0, XpReward = 0, IsRequired = false, DueHoursAfterSession = 0, Status = (string?)null, Score = (int?)null, Feedback = (string?)null, SessionScheduledAt = (DateTimeOffset?)null }).ToList();
+            : new List<System.Dynamic.ExpandoObject>().Select(x => new { Id = Guid.Empty, Title = "", Description = "", TaskType = "", SubmissionType = "", MaxScore = 0, XpReward = 0, IsRequired = false, DueHoursAfterSession = 0, SubmissionStatus = (SubmissionStatus?)null, Score = (int?)null, Feedback = (string?)null, SessionScheduledAt = (DateTimeOffset?)null }).ToList();
 
-        var tasks = dbTasks.Select(x => new CourseTaskDto(
-            x.Id, x.Title, x.Description,
-            x.TaskType, x.SubmissionType,
-            x.MaxScore, x.XpReward, x.IsRequired,
-            x.Status, x.Score, x.Feedback,
-            x.SessionScheduledAt?.AddHours(x.DueHoursAfterSession) ?? x.SessionScheduledAt
-        )).ToList();
+        var tasks = dbTasks.Select(x => {
+            // Map the backend submission status to frontend expected values
+            string status;
+            if (!x.SubmissionStatus.HasValue)
+            {
+                status = "pending";
+            }
+            else if (x.SubmissionStatus.Value == SubmissionStatus.Graded)
+            {
+                status = "graded";
+            }
+            else
+            {
+                // Any other status (Pending, Accepted, ReturnedForRevision) counts as "submitted"
+                status = "submitted";
+            }
+            return new CourseTaskDto(
+                x.Id, x.Title, x.Description,
+                x.TaskType, x.SubmissionType,
+                x.MaxScore, x.XpReward, x.IsRequired,
+                status, x.Score, x.Feedback,
+                x.SessionScheduledAt?.AddHours(x.DueHoursAfterSession) ?? x.SessionScheduledAt
+            );
+        }).ToList();
 
         var roundStudentCount = await db.CohortEnrollments.CountAsync(x => x.CohortId == courseRoundId, cancellationToken);
-        var courseStudentCount = await db.CohortEnrollments.CountAsync(x => x.Cohort!.CourseId == round.CourseId, cancellationToken);
+        var courseStudentCount = await db.Cohorts
+            .Where(c => c.CourseId == round.CourseId)
+            .SelectMany(c => c.CohortEnrollments)
+            .CountAsync(cancellationToken);
 
         var classmatesList = await db.CohortEnrollments
             .AsNoTracking()
@@ -146,9 +200,10 @@ public class CourseRoomService(AcademyDbContext db) : ICourseRoomService
         var isAdminStaff = user != null && (user.RoleKey == AcademyRole.AcademyAdmin || user.RoleKey == AcademyRole.Engineer || user.RoleKey == AcademyRole.Cta);
 
         var accepted = isAdminStaff || await db.CourseApplications.AnyAsync(x => x.CohortId == courseRoundId && x.StudentUserId == studentUserId && x.Status == ApplicationStatus.Accepted, cancellationToken);
-        var enrolled = isAdminStaff || await db.CohortEnrollments.AnyAsync(x => x.CohortId == courseRoundId && x.StudentUserId == studentUserId, cancellationToken);
+        var enrolledViaCohort = isAdminStaff || await db.CohortEnrollments.AnyAsync(x => x.CohortId == courseRoundId && x.StudentUserId == studentUserId, cancellationToken);
+        var enrolledViaEnrollment = isAdminStaff || await db.Enrollments.AnyAsync(x => x.CohortId == courseRoundId && x.StudentUserId == studentUserId, cancellationToken);
 
-        if (!isAdminStaff && !accepted && !enrolled)
+        if (!isAdminStaff && !accepted && !enrolledViaCohort && !enrolledViaEnrollment)
         {
             return new List<QuizItemDto>();
         }

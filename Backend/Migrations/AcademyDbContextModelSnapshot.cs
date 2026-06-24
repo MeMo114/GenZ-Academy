@@ -1907,8 +1907,7 @@ namespace GenZCoders.Migrations
 
                     b.HasIndex("CourseSessionId");
 
-                    b.HasIndex("CohortId", "CourseSessionId")
-                        .IsUnique();
+                    b.HasIndex("CohortId", "CourseSessionId");
 
                     b.ToTable("SessionInstances");
                 });
