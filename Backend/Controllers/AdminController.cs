@@ -226,11 +226,14 @@ public class AdminController(
         return Ok(new { course.Id, course.Slug });
     }
 
-    [HttpPut("courses/{id:guid}")]
-    public async Task<IActionResult> UpdateCourse(Guid id, AdminCourseCreateRequest request, CancellationToken cancellationToken)
+    [HttpPut("courses/{id}")]
+    public async Task<IActionResult> UpdateCourse(string id, AdminCourseCreateRequest request, CancellationToken cancellationToken)
     {
-        var course = await db.Courses.FindAsync([id], cancellationToken);
-        if (course is null) return NotFound();
+        var course = await db.Courses
+            .FirstOrDefaultAsync(x => x.Id.ToString() == id || x.Slug == id, cancellationToken);
+
+        if (course is null)
+            return NotFound(new { message = "Course not found" });
 
         course.Title            = request.Title;
         course.Subtitle         = request.Subtitle;
@@ -258,11 +261,15 @@ public class AdminController(
         return Ok(new { course.Id });
     }
 
-    [HttpDelete("courses/{id:guid}")]
-    public async Task<IActionResult> ArchiveCourse(Guid id, CancellationToken cancellationToken)
+    [HttpDelete("courses/{id}")]
+    public async Task<IActionResult> ArchiveCourse(string id, CancellationToken cancellationToken)
     {
-        var course = await db.Courses.FindAsync([id], cancellationToken);
-        if (course is null) return NotFound();
+        var course = await db.Courses
+            .FirstOrDefaultAsync(x => x.Id.ToString() == id || x.Slug == id, cancellationToken);
+
+        if (course is null)
+            return NotFound(new { message = "Course not found" });
+
         course.IsDeleted = true;
         await db.SaveChangesAsync(cancellationToken);
         return Ok(new { archived = true });
@@ -1384,12 +1391,19 @@ public class AdminController(
     }
 
     // ── Materials (Admin) ────────────────────────────────────────────────────
-    [HttpGet("courses/{courseId:guid}/materials")]
-    public async Task<IActionResult> GetCourseMaterials(Guid courseId, CancellationToken cancellationToken)
+    [HttpGet("courses/{courseId}/materials")]
+    public async Task<IActionResult> GetCourseMaterials(string courseId, CancellationToken cancellationToken)
     {
+        var course = await db.Courses
+            .AsNoTracking()
+            .FirstOrDefaultAsync(x => x.Id.ToString() == courseId || x.Slug == courseId, cancellationToken);
+
+        if (course is null)
+            return NotFound(new { message = "Course not found" });
+
         var materials = await db.CourseMaterials
             .AsNoTracking()
-            .Where(x => x.CourseId == courseId)
+            .Where(x => x.CourseId == course.Id)
             .OrderByDescending(x => x.CreatedAt)
             .Select(m => new
             {
@@ -1406,15 +1420,18 @@ public class AdminController(
         return Ok(materials);
     }
 
-    [HttpPost("courses/{courseId:guid}/materials")]
-    public async Task<IActionResult> UploadCourseMaterial(Guid courseId, AdminMaterialUploadRequest request, CancellationToken cancellationToken)
+    [HttpPost("courses/{courseId}/materials")]
+    public async Task<IActionResult> UploadCourseMaterial(string courseId, AdminMaterialUploadRequest request, CancellationToken cancellationToken)
     {
-        var course = await db.Courses.FindAsync([courseId], cancellationToken);
-        if (course is null) return NotFound(new { message = "Course not found" });
+        var course = await db.Courses
+            .FirstOrDefaultAsync(x => x.Id.ToString() == courseId || x.Slug == courseId, cancellationToken);
+
+        if (course is null)
+            return NotFound(new { message = "Course not found" });
 
         var material = new CourseMaterial
         {
-            CourseId = courseId,
+            CourseId = course.Id,
             Title = request.Title,
             MaterialType = Enum.Parse<CourseMaterialType>(request.MaterialType),
             Url = request.Url,
