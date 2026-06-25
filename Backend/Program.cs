@@ -113,11 +113,15 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
     options.KnownNetworks.Clear();
 });
 
+// Log allowed origins for debugging
+var allowedOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ??
+                     ["http://localhost:3000", "https://localhost:3000", "https://genzacademy.vercel.app", "https://genzcoders-azure.vercel.app"];
+Console.WriteLine($"[CORS] Allowed origins: {string.Join(", ", allowedOrigins)}");
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("NextJsClient", policy =>
-        policy.WithOrigins(builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ??
-                           ["http://localhost:3000", "https://localhost:3000", "https://genzacademy.vercel.app", "https://genzcoders-azure.vercel.app"])
+        policy.WithOrigins(allowedOrigins)
             .AllowAnyHeader()
             .AllowAnyMethod()
             .AllowCredentials());
