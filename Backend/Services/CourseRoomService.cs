@@ -109,8 +109,11 @@ public class CourseRoomService(AcademyDbContext db, ILogger<CourseRoomService> l
             }
         }
 
-        var dbTasks = access == CourseAccessStatus.Open
-            ? await db.LearningTasks.AsNoTracking()
+        List<CourseTaskDto> tasks;
+        
+        if (access == CourseAccessStatus.Open)
+        {
+            var dbTasks = await db.LearningTasks.AsNoTracking()
                 .Where(x => x.CohortId == courseRoundId)
                 .OrderBy(x => x.CreatedAt)
                 .Select(x => new
@@ -124,50 +127,58 @@ public class CourseRoomService(AcademyDbContext db, ILogger<CourseRoomService> l
                     x.XpReward,
                     x.IsRequired,
                     x.DueHoursAfterSession,
-                    SubmissionStatus = x.Submissions.Where(s => s.StudentUserId == studentUserId).Any() 
-                        ? x.Submissions.Where(s => s.StudentUserId == studentUserId).Select(s => (SubmissionStatus?)s.Status).FirstOrDefault() 
-                        : null,
-                    Score = x.Submissions.Where(s => s.StudentUserId == studentUserId).Select(s => (int?)s.Score).FirstOrDefault(),
-                    Feedback = x.Submissions.Where(s => s.StudentUserId == studentUserId).Select(s => s.Feedback).FirstOrDefault(),
+                    LatestSubmission = x.Submissions
+                        .Where(s => s.StudentUserId == studentUserId)
+                        .OrderByDescending(s => s.SubmittedAt)
+                        .FirstOrDefault(),
                     SessionScheduledAt = db.SessionInstances
                         .Where(s => s.CohortId == courseRoundId && s.CourseSessionId == x.CourseSessionId)
                         .Select(s => (DateTimeOffset?)s.ScheduledAt)
                         .FirstOrDefault()
                 })
-                .ToListAsync(cancellationToken)
-            : new List<System.Dynamic.ExpandoObject>().Select(x => new { Id = Guid.Empty, Title = "", Description = "", TaskType = "", SubmissionType = "", MaxScore = 0, XpReward = 0, IsRequired = false, DueHoursAfterSession = 0, SubmissionStatus = (SubmissionStatus?)null, Score = (int?)null, Feedback = (string?)null, SessionScheduledAt = (DateTimeOffset?)null }).ToList();
+                .ToListAsync(cancellationToken);
 
-        logger.LogInformation("=== dbTasks results ===");
-        foreach (var task in dbTasks)
-        {
-            logger.LogInformation("Task: {Title}, SubmissionStatus: {SubStatus}, Status will map to: {MappedStatus}", 
-                task.Title, task.SubmissionStatus, !task.SubmissionStatus.HasValue ? "pending" : task.SubmissionStatus.Value == SubmissionStatus.Graded ? "graded" : "submitted");
+            logger.LogInformation("=== dbTasks results ===");
+            foreach (var task in dbTasks)
+            {
+                logger.LogInformation("Task: {Title}, HasSubmission: {HasSub}, SubmissionStatus: {SubStatus}, Score: {Score}", 
+                    task.Title, task.LatestSubmission != null, task.LatestSubmission?.Status, task.LatestSubmission?.Score);
+            }
+
+            tasks = dbTasks.Select(x => {
+                // Map the backend submission status to frontend expected values
+                string status;
+                int? score = null;
+                string? feedback = null;
+                
+                if (x.LatestSubmission == null)
+                {
+                    status = "pending";
+                }
+                else if (x.LatestSubmission.Status == SubmissionStatus.Graded)
+                {
+                    status = "graded";
+                    score = x.LatestSubmission.Score;
+                    feedback = x.LatestSubmission.Feedback;
+                }
+                else
+                {
+                    // Any other status (Pending, Accepted, ReturnedForRevision) counts as "submitted"
+                    status = "submitted";
+                }
+                return new CourseTaskDto(
+                    x.Id, x.Title, x.Description,
+                    x.TaskType, x.SubmissionType,
+                    x.MaxScore, x.XpReward, x.IsRequired,
+                    status, score, feedback,
+                    x.SessionScheduledAt?.AddHours(x.DueHoursAfterSession) ?? x.SessionScheduledAt
+                );
+            }).ToList();
         }
-
-        var tasks = dbTasks.Select(x => {
-            // Map the backend submission status to frontend expected values
-            string status;
-            if (!x.SubmissionStatus.HasValue)
-            {
-                status = "pending";
-            }
-            else if (x.SubmissionStatus.Value == SubmissionStatus.Graded)
-            {
-                status = "graded";
-            }
-            else
-            {
-                // Any other status (Pending, Accepted, ReturnedForRevision) counts as "submitted"
-                status = "submitted";
-            }
-            return new CourseTaskDto(
-                x.Id, x.Title, x.Description,
-                x.TaskType, x.SubmissionType,
-                x.MaxScore, x.XpReward, x.IsRequired,
-                status, x.Score, x.Feedback,
-                x.SessionScheduledAt?.AddHours(x.DueHoursAfterSession) ?? x.SessionScheduledAt
-            );
-        }).ToList();
+        else
+        {
+            tasks = new List<CourseTaskDto>();
+        }
 
         var roundStudentCount = await db.CohortEnrollments.CountAsync(x => x.CohortId == courseRoundId, cancellationToken);
         var courseStudentCount = await db.Cohorts

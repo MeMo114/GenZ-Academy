@@ -220,9 +220,10 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
                 x.XpReward,
                 x.IsRequired,
                 x.DueHoursAfterSession,
-                Status = x.Submissions.Where(s => s.StudentUserId == userId).Select(s => s.Status.ToString()).FirstOrDefault(),
-                Score = x.Submissions.Where(s => s.StudentUserId == userId).Select(s => (int?)s.Score).FirstOrDefault(),
-                Feedback = x.Submissions.Where(s => s.StudentUserId == userId).Select(s => s.Feedback).FirstOrDefault(),
+                LatestSubmission = x.Submissions
+                    .Where(s => s.StudentUserId == userId)
+                    .OrderByDescending(s => s.SubmittedAt)
+                    .FirstOrDefault(),
                 SessionScheduledAt = db.SessionInstances
                     .Where(s => s.CohortId == enrollment.CohortId && s.CourseSessionId == x.CourseSessionId)
                     .Select(s => (DateTimeOffset?)s.ScheduledAt)
@@ -233,12 +234,21 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
         var tasks = dbTasks.Select(x => 
         {
             // Map status correctly
-            string status = x.Status ?? "pending";
-            if (status == "Graded")
+            string status;
+            int? score = null;
+            string? feedback = null;
+            
+            if (x.LatestSubmission == null)
+            {
+                status = "pending";
+            }
+            else if (x.LatestSubmission.Status == SubmissionStatus.Graded)
             {
                 status = "graded";
+                score = x.LatestSubmission.Score;
+                feedback = x.LatestSubmission.Feedback;
             }
-            else if (status != "pending")
+            else
             {
                 status = "submitted";
             }
@@ -247,7 +257,7 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
                 x.Id, x.Title, x.Description,
                 x.TaskType, x.SubmissionType,
                 x.MaxScore, x.XpReward, x.IsRequired,
-                status, x.Score, x.Feedback,
+                status, score, feedback,
                 x.SessionScheduledAt?.AddHours(x.DueHoursAfterSession) ?? x.SessionScheduledAt
             );
         }).ToList();
@@ -445,11 +455,10 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
                 x.DueHoursAfterSession,
                 x.CohortId,
                 x.CourseSessionId,
-                Status = x.Submissions.Where(s => s.StudentUserId == userId).Any()
-                        ? x.Submissions.Where(s => s.StudentUserId == userId).Select(s => (string?)s.Status.ToString()).FirstOrDefault()
-                        : null,
-                Score = x.Submissions.Where(s => s.StudentUserId == userId).Select(s => (int?)s.Score).FirstOrDefault(),
-                Feedback = x.Submissions.Where(s => s.StudentUserId == userId).Select(s => s.Feedback).FirstOrDefault()
+                LatestSubmission = x.Submissions
+                    .Where(s => s.StudentUserId == userId)
+                    .OrderByDescending(s => s.SubmittedAt)
+                    .FirstOrDefault()
             })
             .ToListAsync(cancellationToken);
 
@@ -462,12 +471,21 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
                 .FirstOrDefaultAsync(cancellationToken);
                 
             // Map status correctly
-            string status = x.Status ?? "pending";
-            if (status == "Graded")
+            string status;
+            int? score = null;
+            string? feedback = null;
+            
+            if (x.LatestSubmission == null)
+            {
+                status = "pending";
+            }
+            else if (x.LatestSubmission.Status == SubmissionStatus.Graded)
             {
                 status = "graded";
+                score = x.LatestSubmission.Score;
+                feedback = x.LatestSubmission.Feedback;
             }
-            else if (status != "pending")
+            else
             {
                 status = "submitted";
             }
@@ -476,7 +494,7 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
                 x.Id, x.Title, x.Description,
                 x.TaskType, x.SubmissionType,
                 x.MaxScore, x.XpReward, x.IsRequired,
-                status, x.Score, x.Feedback,
+                status, score, feedback,
                 scheduledAt?.AddHours(x.DueHoursAfterSession) ?? scheduledAt
             ));
         }

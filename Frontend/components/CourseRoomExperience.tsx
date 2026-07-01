@@ -738,6 +738,7 @@ function CurriculumCard({ week, idx, isExpanded, onToggle, isAdmin }: { week: Se
 
 function TaskCard({ task, isAdmin, userId }: { task: LearningTask, isAdmin: boolean, userId?: string }) {
   const isPending = task.status === 'pending';
+  const isGraded = task.status === 'graded';
   const [taskStatus, setTaskStatus] = useState(task.status);
 
   useEffect(() => {
@@ -814,22 +815,47 @@ function TaskCard({ task, isAdmin, userId }: { task: LearningTask, isAdmin: bool
   return (
     <>
       <div className="bg-white rounded-[2.5rem] p-8 border border-black/5 shadow-sm hover:shadow-xl transition-all group flex flex-col justify-between min-h-[280px] relative overflow-hidden">
-         {taskStatus === 'submitted' && (
+         {isGraded && (
+            <div className="absolute top-0 right-0 w-24 h-24 bg-blue-500/10 rounded-bl-full flex items-start justify-end p-4 pointer-events-none">
+              <CheckCircle size={24} weight="fill" className="text-blue-500" />
+            </div>
+         )}
+         {taskStatus === 'submitted' && !isGraded && (
             <div className="absolute top-0 right-0 w-24 h-24 bg-green-500/10 rounded-bl-full flex items-start justify-end p-4 pointer-events-none">
               <CheckCircle size={24} weight="fill" className="text-green-500" />
             </div>
          )}
          <div>
             <div className="flex items-center justify-between mb-6">
-               <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${taskStatus === 'pending' ? 'bg-brand/10 text-brand' : 'bg-green-100 text-green-600'}`}>
-                  {taskStatus === 'pending' ? <Cpu size={24} weight="duotone" /> : <CheckCircle size={24} weight="fill" />}
+               <div className={`w-12 h-12 rounded-2xl flex items-center justify-center ${
+                  isPending ? 'bg-brand/10 text-brand' : 
+                  isGraded ? 'bg-blue-100 text-blue-600' : 
+                  'bg-green-100 text-green-600'
+               }`}>
+                  {isPending ? <Cpu size={24} weight="duotone" /> : <CheckCircle size={24} weight="fill" />}
                </div>
                <div className="flex flex-col items-end">
                   <span className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mr-8">Due {task.dueAt}</span>
                </div>
             </div>
             <h3 className="text-2xl font-black font-display text-zinc-900 mb-3 leading-tight">{task.title}</h3>
-            <p className="text-zinc-500 text-sm font-medium mb-8 leading-relaxed">{task.description}</p>
+            <p className="text-zinc-500 text-sm font-medium mb-4 leading-relaxed">{task.description}</p>
+            {isGraded && (
+              <div className="space-y-3 mb-4">
+                {task.score !== undefined && task.score !== null && (
+                  <div className="bg-blue-50 border border-blue-100 p-4 rounded-2xl">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-blue-600 mb-1">Score</div>
+                    <div className="text-xl font-black text-blue-700">{task.score}/{task.maxScore}</div>
+                  </div>
+                )}
+                {task.feedback && (
+                  <div className="bg-zinc-50 border border-black/5 p-4 rounded-2xl">
+                    <div className="text-[10px] font-black uppercase tracking-widest text-zinc-500 mb-1">Feedback</div>
+                    <div className="text-sm font-medium text-zinc-700 leading-relaxed">{task.feedback}</div>
+                  </div>
+                )}
+              </div>
+            )}
          </div>
          
          <div className="flex items-center justify-between pt-6 border-t border-black/5 mt-4">
@@ -848,9 +874,13 @@ function TaskCard({ task, isAdmin, userId }: { task: LearningTask, isAdmin: bool
               disabled={!isAdmin && taskStatus !== 'pending'}
               className={`px-6 py-3 rounded-xl font-black text-[10px] uppercase tracking-widest transition-all ${
               isAdmin ? 'bg-zinc-950 text-white' : 
-              taskStatus === 'pending' ? 'bg-[#ff1a1a] text-white hover:bg-[#cc0000] shadow-md shadow-[#ff1a1a]/20 hover:-translate-y-0.5 active:translate-y-0' : 'bg-green-50 text-green-600 border border-green-100 cursor-not-allowed'
+              taskStatus === 'pending' ? 'bg-[#ff1a1a] text-white hover:bg-[#cc0000] shadow-md shadow-[#ff1a1a]/20 hover:-translate-y-0.5 active:translate-y-0' : 
+              isGraded ? 'bg-blue-50 text-blue-600 border border-blue-100 cursor-not-allowed' : 
+              'bg-green-50 text-green-600 border border-green-100 cursor-not-allowed'
             }`}>
-                {isAdmin ? 'Grade Submissions' : taskStatus === 'pending' ? 'Submit Work' : 'Submitted'}
+                {isAdmin ? 'Grade Submissions' : 
+                 taskStatus === 'pending' ? 'Submit Work' : 
+                 isGraded ? 'Graded' : 'Submitted'}
             </button>
          </div>
       </div>
