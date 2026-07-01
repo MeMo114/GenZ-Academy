@@ -31,7 +31,7 @@ import * as Sentry from "@sentry/nextjs";
 export const API_BASE = typeof window !== "undefined"
   ? window.location.hostname.includes("localhost")
     ? "" // Local development: use proxy/rewrites
-    : "https://genz.runasp.net" // Production: FORCE production backend
+    : "https://genz.runasp.net" // Production: FORCE production backend        
   : "https://genz.runasp.net";
 // ─── Brochure Paths ───────────────────────────────────────────────────────────
 export const BROCHURE_MAP: Record<string, string> = {
@@ -469,24 +469,38 @@ export const getLeaderboard = () =>
 // ─── Course Room ──────────────────────────────────────────────────────────────
 export const getCourseRoom = async (id: string): Promise<CourseRoom> => {
   const fallback = makeDemoCourseRoom(id);
+  console.log("getCourseRoom called for id:", id, "API_BASE:", API_BASE);
   try {
     const res = await fetch(`${API_BASE}/api/course-rooms/${id}`, {
       cache: "no-store", credentials: "include",
     });
+    console.log("First API response status:", res.status, "ok:", res.ok);
     if (res.ok) {
       const data = await res.json();
+      console.log("First API data:", data);
       if (data && data.weeks) return data as CourseRoom;
+    } else {
+      console.error("First API failed:", await res.text());
     }
-  } catch { /* fall through */ }
+  } catch (e) {
+    console.error("First API error:", e);
+  }
   try {
     const res = await fetch(`${API_BASE}/api/learning/room/${id}`, {
       cache: "no-store", credentials: "include",
     });
+    console.log("Second API response status:", res.status, "ok:", res.ok);
     if (res.ok) {
       const data = await res.json();
+      console.log("Second API data:", data);
       if (data && data.weeks) return data as CourseRoom;
+    } else {
+      console.error("Second API failed:", await res.text());
     }
-  } catch { /* fall through */ }
+  } catch (e) {
+    console.error("Second API error:", e);
+  }
+  console.warn("Falling back to demo data");
   return fallback;
 };
 

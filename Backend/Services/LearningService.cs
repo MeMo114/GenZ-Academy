@@ -445,7 +445,9 @@ public class LearningService(AcademyDbContext db, INotificationService notificat
                 x.DueHoursAfterSession,
                 x.CohortId,
                 x.CourseSessionId,
-                Status = x.Submissions.Where(s => s.StudentUserId == userId).Select(s => (string?)s.Status.ToString()).FirstOrDefault(),
+                Status = x.Submissions.Where(s => s.StudentUserId == userId).Any()
+                        ? x.Submissions.Where(s => s.StudentUserId == userId).Select(s => (string?)s.Status.ToString()).FirstOrDefault()
+                        : null,
                 Score = x.Submissions.Where(s => s.StudentUserId == userId).Select(s => (int?)s.Score).FirstOrDefault(),
                 Feedback = x.Submissions.Where(s => s.StudentUserId == userId).Select(s => s.Feedback).FirstOrDefault()
             })

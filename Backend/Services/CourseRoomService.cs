@@ -2,13 +2,19 @@ using GenZCoders.Data;
 using GenZCoders.DTOs;
 using GenZCoders.Models;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
+using System.Text.Json;
 
 namespace GenZCoders.Services;
 
-public class CourseRoomService(AcademyDbContext db) : ICourseRoomService
+public class CourseRoomService(AcademyDbContext db, ILogger<CourseRoomService> logger) : ICourseRoomService
 {
     public async Task<CourseRoomDto> GetRoomAsync(Guid studentUserId, Guid courseRoundId, CancellationToken cancellationToken = default)
     {
+        logger.LogInformation("=== GetRoomAsync Debug Logs ===");
+        logger.LogInformation("studentUserId: {StudentUserId}", studentUserId);
+        logger.LogInformation("courseRoundId: {CourseRoundId}", courseRoundId);
+
         var round = await db.Cohorts
             .AsNoTracking()
             .Include(x => x.Course)
@@ -80,6 +86,29 @@ public class CourseRoomService(AcademyDbContext db) : ICourseRoomService
         var totalWeeks = await db.SessionInstances.CountAsync(x => x.CohortId == courseRoundId, cancellationToken);
         var completion = totalWeeks == 0 ? 0 : decimal.Round(attendance * 100m / totalWeeks, 2);
 
+        // Get all LearningTasks for this round + ALL TaskSubmissions for these tasks for debugging
+        var tasksWithSubmissions = await db.LearningTasks.AsNoTracking()
+            .Where(x => x.CohortId == courseRoundId)
+            .Include(x => x.Submissions)
+            .OrderBy(x => x.CreatedAt)
+            .Select(x => new {
+                LearningTask = x,
+                AllSubmissions = x.Submissions
+            })
+            .ToListAsync(cancellationToken);
+
+        logger.LogInformation("Found {Count} LearningTasks for this round", tasksWithSubmissions.Count);
+        foreach (var taskData in tasksWithSubmissions)
+        {
+            logger.LogInformation("--- LearningTask: {Title} (Id: {Id})", taskData.LearningTask.Title, taskData.LearningTask.Id);
+            logger.LogInformation("Submissions count: {Count}", taskData.AllSubmissions.Count);
+            foreach (var sub in taskData.AllSubmissions)
+            {
+                logger.LogInformation("  - TaskSubmission Id: {SubId}, LearningTaskId: {TaskId}, StudentUserId: {StudentId}, Status: {Status}", 
+                    sub.Id, sub.LearningTaskId, sub.StudentUserId, sub.Status);
+            }
+        }
+
         var dbTasks = access == CourseAccessStatus.Open
             ? await db.LearningTasks.AsNoTracking()
                 .Where(x => x.CohortId == courseRoundId)
@@ -95,7 +124,9 @@ public class CourseRoomService(AcademyDbContext db) : ICourseRoomService
                     x.XpReward,
                     x.IsRequired,
                     x.DueHoursAfterSession,
-                    SubmissionStatus = x.Submissions.Where(s => s.StudentUserId == studentUserId).Select(s => (SubmissionStatus?)s.Status).FirstOrDefault(),
+                    SubmissionStatus = x.Submissions.Where(s => s.StudentUserId == studentUserId).Any() 
+                        ? x.Submissions.Where(s => s.StudentUserId == studentUserId).Select(s => (SubmissionStatus?)s.Status).FirstOrDefault() 
+                        : null,
                     Score = x.Submissions.Where(s => s.StudentUserId == studentUserId).Select(s => (int?)s.Score).FirstOrDefault(),
                     Feedback = x.Submissions.Where(s => s.StudentUserId == studentUserId).Select(s => s.Feedback).FirstOrDefault(),
                     SessionScheduledAt = db.SessionInstances
@@ -105,6 +136,13 @@ public class CourseRoomService(AcademyDbContext db) : ICourseRoomService
                 })
                 .ToListAsync(cancellationToken)
             : new List<System.Dynamic.ExpandoObject>().Select(x => new { Id = Guid.Empty, Title = "", Description = "", TaskType = "", SubmissionType = "", MaxScore = 0, XpReward = 0, IsRequired = false, DueHoursAfterSession = 0, SubmissionStatus = (SubmissionStatus?)null, Score = (int?)null, Feedback = (string?)null, SessionScheduledAt = (DateTimeOffset?)null }).ToList();
+
+        logger.LogInformation("=== dbTasks results ===");
+        foreach (var task in dbTasks)
+        {
+            logger.LogInformation("Task: {Title}, SubmissionStatus: {SubStatus}, Status will map to: {MappedStatus}", 
+                task.Title, task.SubmissionStatus, !task.SubmissionStatus.HasValue ? "pending" : task.SubmissionStatus.Value == SubmissionStatus.Graded ? "graded" : "submitted");
+        }
 
         var tasks = dbTasks.Select(x => {
             // Map the backend submission status to frontend expected values
