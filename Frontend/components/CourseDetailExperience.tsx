@@ -19,6 +19,22 @@ export function CourseDetailExperience({ course, rounds }: { course: Course; rou
   const [addingToCart, setAddingToCart] = useState(false);
   const inCart = isInCart(course.id);
 
+  // Filter upcoming/active rounds
+  const availableRounds = rounds.filter((r) => 
+    (r.status === "Upcoming" || r.status === "Active") && 
+    !["Completed", "Cancelled"].includes(r.status)
+  );
+
+  // Check if any rounds are accepting applications
+  const hasOpenRounds = availableRounds.some(
+    (r) => r.isEnrollmentOpen && r.currentStudents < r.maxStudents
+  );
+  const hasFullRoundsOnly = availableRounds.length > 0 && 
+    !availableRounds.some((r) => r.isEnrollmentOpen && r.currentStudents < r.maxStudents);
+  const hasClosedRounds = availableRounds.length > 0 && 
+    !availableRounds.some((r) => r.isEnrollmentOpen);
+  const noRoundsAvailable = availableRounds.length === 0;
+
   const skills: string[] = (() => {
     try { return JSON.parse(course.skillsTaughtJson || "[]"); } catch { return []; }
   })();
@@ -191,12 +207,41 @@ export function CourseDetailExperience({ course, rounds }: { course: Course; rou
             </div>
 
             <div className="flex flex-col gap-3">
-              <div className="w-full py-4 rounded-2xl font-bold text-lg text-center bg-zinc-100 border border-zinc-200 text-zinc-600">
-                Enrollment is by invitation only
-              </div>
-              <div className="text-center text-sm text-zinc-500 font-medium">
-                Contact the academy team to learn more about joining this track
-              </div>
+              {hasOpenRounds ? (
+                <Link href={`/apply?course=${course.slug}`}>
+                  <button 
+                    className="w-full py-4 rounded-2xl font-bold text-lg text-center bg-brand text-white hover:bg-brand/90 transition-colors"
+                  >
+                    Apply Now
+                  </button>
+                </Link>
+              ) : hasFullRoundsOnly ? (
+                <div className="w-full py-4 rounded-2xl font-bold text-lg text-center bg-orange-100 border border-orange-200 text-orange-700">
+                  Full
+                </div>
+              ) : hasClosedRounds ? (
+                <div className="w-full py-4 rounded-2xl font-bold text-lg text-center bg-zinc-100 border border-zinc-200 text-zinc-600">
+                  Enrollment Closed
+                </div>
+              ) : noRoundsAvailable ? (
+                <div className="w-full py-4 rounded-2xl font-bold text-lg text-center bg-zinc-100 border border-zinc-200 text-zinc-600">
+                  No upcoming rounds
+                </div>
+              ) : (
+                <div className="w-full py-4 rounded-2xl font-bold text-lg text-center bg-zinc-100 border border-zinc-200 text-zinc-600">
+                  Enrollment Closed
+                </div>
+              )}
+              {hasOpenRounds && (
+                <div className="text-center text-sm text-zinc-500 font-medium">
+                  Join the {availableRounds.length === 1 ? availableRounds[0].name : "next"} round
+                </div>
+              )}
+              {noRoundsAvailable && (
+                <div className="text-center text-sm text-zinc-500 font-medium">
+                  Check back soon for new rounds
+                </div>
+              )}
             </div>
           </div>
 
