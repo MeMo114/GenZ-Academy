@@ -156,21 +156,15 @@ export default function AdminCoursesPage() {
     let coverUrl = form.coverImageUrl;
     let thumbUrl = form.imageUrl;
     
-    try {
-      if ((form.coverImageUrl && form.coverImageUrl.startsWith("data:")) || (form.imageUrl && form.imageUrl.startsWith("data:"))) {
-         toast("Uploading media, please wait...", "info");
-      }
+    if ((form.coverImageUrl && form.coverImageUrl.startsWith("data:")) || (form.imageUrl && form.imageUrl.startsWith("data:"))) {
+       toast("Uploading media, please wait...", "info");
+    }
 
-      if (form.coverImageUrl && form.coverImageUrl.startsWith("data:")) {
-        coverUrl = await uploadToCloudinary(form.coverImageUrl, "courses/covers");
-      }
-      if (form.imageUrl && form.imageUrl.startsWith("data:")) {
-        thumbUrl = await uploadToCloudinary(form.imageUrl, "courses/thumbnails");
-      }
-    } catch (cloudinaryError: any) {
-      toast("Media upload failed: " + cloudinaryError.message, "error");
-      setSaving(false);
-      return;
+    if (form.coverImageUrl && form.coverImageUrl.startsWith("data:")) {
+      coverUrl = await uploadToCloudinary(form.coverImageUrl, "courses/covers");
+    }
+    if (form.imageUrl && form.imageUrl.startsWith("data:")) {
+      thumbUrl = await uploadToCloudinary(form.imageUrl, "courses/thumbnails");
     }
 
     const payload = {

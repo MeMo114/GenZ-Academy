@@ -2,8 +2,12 @@ export async function uploadToCloudinary(file: File | string, folder: string = '
   const cloudName = process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME;
   const uploadPreset = process.env.NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET;
 
+  // If Cloudinary isn't configured, just return the original file/url
   if (!cloudName || !uploadPreset) {
-    throw new Error('Cloudinary configuration is missing. Check NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME and NEXT_PUBLIC_CLOUDINARY_UPLOAD_PRESET in .env');
+    console.warn('Cloudinary configuration missing, using original file/url instead');
+    if (typeof file === 'string') return file;
+    // For File, return a blob URL as fallback
+    return URL.createObjectURL(file);
   }
 
   const url = `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`;
@@ -26,7 +30,10 @@ export async function uploadToCloudinary(file: File | string, folder: string = '
 
   if (!response.ok) {
     const errorData = await response.json();
-    throw new Error(errorData.error?.message || 'Failed to upload image to Cloudinary');
+    console.warn('Cloudinary upload failed, falling back to original file/url:', errorData);
+    // Fallback to original if Cloudinary fails
+    if (typeof file === 'string') return file;
+    return URL.createObjectURL(file);
   }
 
   const data = await response.json();

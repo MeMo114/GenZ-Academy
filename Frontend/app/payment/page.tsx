@@ -148,15 +148,7 @@ export default function PaymentPage() {
     setBusy(true);
     try {
       if (method === "wallet") {
-        let secureUrl = receiptBase64;
-        try {
-          secureUrl = await uploadToCloudinary(receiptBase64, "receipts");
-        } catch (cloudinaryError: any) {
-          setReceiptError("Cloudinary upload failed: " + cloudinaryError.message);
-          toast("Cloudinary upload failed: " + cloudinaryError.message, "error");
-          setBusy(false);
-          return;
-        }
+        const secureUrl = await uploadToCloudinary(receiptBase64, "receipts");
 
         if (applicationId) {
           await uploadPaymentReceipt(applicationId, { receiptUrl: secureUrl, paymentMethod: "Wallet Transfer" });
