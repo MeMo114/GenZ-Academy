@@ -30,7 +30,7 @@ import * as Sentry from "@sentry/nextjs";
 //   : env.apiBaseUrl;
 export const API_BASE = typeof window !== "undefined"
   ? window.location.hostname.includes("localhost")
-    ? "" // Local development: use proxy/rewrites
+    ? "http://localhost:5079" // Local development: use localhost backend directly
     : "https://genz.runasp.net" // Production: FORCE production backend        
   : "https://genz.runasp.net";
 // ─── Brochure Paths ───────────────────────────────────────────────────────────

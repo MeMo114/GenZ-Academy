@@ -21,7 +21,7 @@ public enum NotificationChannel { InApp, Email, Sms, WhatsApp, Push }
 public enum NotificationStatus { Queued, Sent, Failed, Read }
 public enum ProjectVisibility { Private, ParentsOnly, SchoolOnly, Public }
 public enum LeadStatus { New, Contacted, Qualified, Converted, Lost }
-public enum ApplicationStatus { Draft, Submitted, QuestionsPassed, PaymentPending, Paid, UnderReview, Accepted, Rejected, Waitlisted, Cancelled }
+public enum ApplicationStatus { Draft, WaitingForPretest, PretestFailed, WaitingForPayment, PaymentSubmitted, PaymentUnderReview, RequestingNewPaymentProof, Submitted, QuestionsPassed, PaymentPending, Paid, UnderReview, Accepted, Approved, Rejected, Waitlisted, Cancelled }
 public enum ApplicationQuestionType { Mcq, TrueFalse, ShortAnswer }
 public enum ApplicationReviewDecision { Pending, Accepted, Rejected, NeedsManualReview }
 public enum CourseMaterialType { Pdf, PowerPoint, Video, Link, CodeRepository, Worksheet, Recording }

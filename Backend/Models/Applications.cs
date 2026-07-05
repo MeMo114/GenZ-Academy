@@ -30,7 +30,7 @@ public class CourseApplication
     public Cohort? Cohort { get; set; }
     public Guid StudentUserId { get; set; }
     public ApplicationUser? StudentUser { get; set; }
-    public ApplicationStatus Status { get; set; } = ApplicationStatus.Submitted;
+    public ApplicationStatus Status { get; set; } = ApplicationStatus.Draft;
     public decimal ApplicationScore { get; set; }
     public bool QuestionsPassed { get; set; }
     public bool PaymentUnlocked { get; set; }
@@ -43,6 +43,23 @@ public class CourseApplication
     public string? PaymentReceiptUrl { get; set; }
     public string? PaymentMethod { get; set; } // e.g., VodafoneCash, Instapay
     public bool PaymentReceiptPendingReview { get; set; }
+    // Pretest Results
+    public bool PretestTaken { get; set; }
+    public decimal? PretestScore { get; set; }
+    public Guid? PretestAttemptId { get; set; }
+    // Payment Proof
+    public string? PaymentProofUrl { get; set; }
+    public string? PaymentTransactionNumber { get; set; }
+    public string? PaymentNotes { get; set; }
+    // Phase 3 Admin Review Fields
+    public string? RejectionReason { get; set; }
+    public Guid? LastReviewedByUserId { get; set; }
+    public DateTimeOffset? LastReviewedAt { get; set; }
+    // Phase 4 Approval Tracking
+    public Guid? ApprovedByUserId { get; set; }
+    public DateTimeOffset? ApprovedAt { get; set; }
+    public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
+    public DateTimeOffset? UpdatedAt { get; set; }
     public DateTimeOffset SubmittedAt { get; set; } = DateTimeOffset.UtcNow;
     public DateTimeOffset? PaidAt { get; set; }
     public DateTimeOffset? ReviewedAt { get; set; }

@@ -25,6 +25,15 @@ public class Course
     public bool IsFeatured { get; set; } = true;
     public bool IsDeleted { get; set; } = false;
     public string? ImageUrl { get; set; }
+    // Pretest Config
+    public bool PretestEnabled { get; set; }
+    public decimal PretestPassingScore { get; set; } = 50.0m;
+    public Guid? PretestQuizId { get; set; }
+    // Payment Config
+    public string? PaymentAccountName { get; set; }
+    public string? PaymentAccountNumber { get; set; }
+    public string? PaymentInstructions { get; set; }
+    public string? PaymentQrCodeUrl { get; set; }
     public DateTimeOffset CreatedAt { get; set; } = DateTimeOffset.UtcNow;
     public ICollection<CourseModule> Modules { get; set; } = [];
     public ICollection<CourseSession> CourseSessions { get; set; } = [];

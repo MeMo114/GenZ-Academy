@@ -58,6 +58,7 @@ public class ApplicationService(
         application.QuestionsPassed = questions.Count == 0 || application.ApplicationScore >= 50;
         application.PaymentUnlocked = application.QuestionsPassed;
         application.Status = application.QuestionsPassed ? ApplicationStatus.PaymentPending : ApplicationStatus.UnderReview;
+        application.UpdatedAt = DateTimeOffset.UtcNow;
 
         db.CourseApplications.Add(application);
         await db.SaveChangesAsync(cancellationToken);
@@ -97,6 +98,7 @@ public class ApplicationService(
         application.PaymentCompleted = true;
         application.PaidAt = DateTimeOffset.UtcNow;
         application.Status = ApplicationStatus.UnderReview;
+        application.UpdatedAt = DateTimeOffset.UtcNow;
 
         var round = application.CohortId.HasValue
             ? await db.Cohorts.FirstOrDefaultAsync(x => x.Id == application.CohortId, cancellationToken)
@@ -128,6 +130,7 @@ public class ApplicationService(
             application.ReviewedByUserId = reviewerUserId;
             application.ReviewNotes = request.Notes;
             application.ReviewedAt = DateTimeOffset.UtcNow;
+            application.UpdatedAt = DateTimeOffset.UtcNow;
         }
 
         await db.SaveChangesAsync(cancellationToken);
@@ -165,6 +168,7 @@ public class ApplicationService(
         application.ReviewNotes = notes;
         application.ReviewedAt = DateTimeOffset.UtcNow;
         application.AcceptedAt = DateTimeOffset.UtcNow;
+        application.UpdatedAt = DateTimeOffset.UtcNow;
 
         var price = application.Course?.PriceEgp ?? 0;
         var shouldActivate = price == 0 || application.PaymentCompleted;
@@ -271,5 +275,288 @@ public class ApplicationService(
     }
 
     private static CourseApplicationDto ToDto(CourseApplication application, string email)
-        => new(application.Id, application.CourseId, application.CohortId, email, application.Status, application.QuestionsPassed, application.PaymentUnlocked, application.PaymentCompleted, application.PaymentReceiptUrl, application.PaymentMethod, application.PaymentReceiptPendingReview, application.ReviewDecision, application.ApplicationScore);
+    {
+        bool? pretestPassed = null;
+        if (application.PretestTaken && application.Course != null && application.PretestScore.HasValue)
+        {
+            pretestPassed = application.PretestScore >= application.Course.PretestPassingScore;
+        }
+        return new CourseApplicationDto(
+            application.Id,
+            application.CourseId,
+            application.CohortId,
+            email,
+            application.Status,
+            application.QuestionsPassed,
+            application.PaymentUnlocked,
+            application.PaymentCompleted,
+            application.PaymentReceiptUrl,
+            application.PaymentMethod,
+            application.PaymentReceiptPendingReview,
+            application.ReviewDecision,
+            application.ApplicationScore,
+            application.Course?.PretestEnabled ?? false,
+            application.PretestTaken,
+            application.PretestScore,
+            pretestPassed,
+            application.PaymentProofUrl,
+            application.PaymentTransactionNumber,
+            application.PaymentNotes,
+            application.RejectionReason,
+            application.LastReviewedByUserId,
+            application.LastReviewedAt,
+            application.ApprovedByUserId,
+            application.ApprovedAt);
+    }
+
+    // New Phase 2 Methods
+    public async Task<CourseApplicationDto> StartApplication(Guid courseId, Guid? cohortId, Guid studentUserId, CancellationToken cancellationToken = default)
+    {
+        var user = await userManager.FindByIdAsync(studentUserId.ToString());
+        if (user == null)
+            throw new InvalidOperationException("User not found");
+
+        // Check for existing active application
+        var existingApp = await db.CourseApplications
+            .FirstOrDefaultAsync(x => x.CourseId == courseId &&
+                                       x.StudentUserId == studentUserId &&
+                                       x.Status != ApplicationStatus.Cancelled &&
+                                       x.Status != ApplicationStatus.Rejected, cancellationToken);
+        if (existingApp != null)
+            return ToDto(existingApp, user.Email ?? "");
+
+        var course = await db.Courses.FindAsync(new object[] { courseId }, cancellationToken);
+        if (course == null)
+            throw new InvalidOperationException("Course not found");
+
+        var app = new CourseApplication
+        {
+            CourseId = courseId,
+            CohortId = cohortId,
+            StudentUserId = studentUserId,
+            Status = course.PretestEnabled ? ApplicationStatus.WaitingForPretest : ApplicationStatus.WaitingForPayment
+        };
+
+        db.CourseApplications.Add(app);
+        await db.SaveChangesAsync(cancellationToken);
+
+        return ToDto(app, user.Email ?? "");
+    }
+
+    public async Task<CourseApplicationDto> SubmitPretest(Guid applicationId, Guid studentUserId, SubmitPretestRequest request, CancellationToken cancellationToken = default)
+    {
+        var app = await db.CourseApplications
+            .Include(x => x.Course)
+            .FirstOrDefaultAsync(x => x.Id == applicationId && x.StudentUserId == studentUserId, cancellationToken);
+        if (app == null)
+            throw new InvalidOperationException("Application not found");
+
+        app.PretestTaken = true;
+        app.PretestScore = request.Score;
+        app.PretestAttemptId = request.PretestAttemptId;
+        app.UpdatedAt = DateTimeOffset.UtcNow;
+
+        if (app.Course != null && request.Score >= app.Course.PretestPassingScore)
+        {
+            app.Status = ApplicationStatus.WaitingForPayment;
+        }
+        else
+        {
+            app.Status = ApplicationStatus.PretestFailed;
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var user = await userManager.FindByIdAsync(studentUserId.ToString());
+        return ToDto(app, user?.Email ?? "");
+    }
+
+    public async Task<CoursePaymentInstructionsDto> GetPaymentInstructions(Guid courseId, CancellationToken cancellationToken = default)
+    {
+        var course = await db.Courses.FindAsync(new object[] { courseId }, cancellationToken);
+        if (course == null)
+            throw new InvalidOperationException("Course not found");
+
+        return new CoursePaymentInstructionsDto(
+            course.PriceEgp,
+            course.PaymentAccountName,
+            course.PaymentAccountNumber,
+            course.PaymentInstructions,
+            course.PaymentQrCodeUrl);
+    }
+
+    public async Task<CourseApplicationDto> UploadPaymentProof(Guid applicationId, Guid studentUserId, UploadPaymentProofRequest request, CancellationToken cancellationToken = default)
+    {
+        var app = await db.CourseApplications
+            .Include(x => x.Course)
+            .FirstOrDefaultAsync(x => x.Id == applicationId && x.StudentUserId == studentUserId, cancellationToken);
+        if (app == null)
+            throw new InvalidOperationException("Application not found");
+
+        app.PaymentProofUrl = request.ProofUrl;
+        app.PaymentTransactionNumber = request.TransactionNumber;
+        app.PaymentNotes = request.Notes;
+        app.Status = ApplicationStatus.PaymentSubmitted;
+        app.RejectionReason = null; // Clear previous rejection reason when student uploads new proof
+        app.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var user = await userManager.FindByIdAsync(studentUserId.ToString());
+        return ToDto(app, user?.Email ?? "");
+    }
+
+    // New Phase3 Admin Methods
+    public async Task<CourseApplicationDto> AdminApproveApplication(Guid applicationId, Guid adminUserId, CancellationToken cancellationToken = default)
+    {
+        var app = await db.CourseApplications
+            .Include(x => x.Course)
+            .FirstOrDefaultAsync(x => x.Id == applicationId, cancellationToken);
+        if (app == null)
+            throw new InvalidOperationException("Application not found.");
+
+        // Idempotency check: if already approved, return early!
+        if (app.Status == ApplicationStatus.Approved)
+        {
+            var user = await userManager.FindByIdAsync(app.StudentUserId.ToString());
+            return ToDto(app, user?.Email ?? "");
+        }
+
+        app.Status = ApplicationStatus.Approved;
+        app.RejectionReason = null;
+        app.LastReviewedByUserId = adminUserId;
+        app.LastReviewedAt = DateTimeOffset.UtcNow;
+        app.ApprovedByUserId = adminUserId;
+        app.ApprovedAt = DateTimeOffset.UtcNow;
+        app.UpdatedAt = DateTimeOffset.UtcNow;
+
+        // Now do automatic enrollment!
+        var price = app.Course?.PriceEgp ?? 0;
+
+        // 1. Create EnrollmentOrder
+        var order = new EnrollmentOrder
+        {
+            StudentUserId = app.StudentUserId,
+            OrderType = OrderType.Single,
+            SubtotalEgp = price,
+            TotalAmountEgp = price,
+            PaymentMethod = "Approved Application",
+            PaymentReference = "Application Approved",
+            PaymentStatus = PaymentStatus.Paid,
+            PaidAt = DateTimeOffset.UtcNow
+        };
+        db.EnrollmentOrders.Add(order);
+        await db.SaveChangesAsync(cancellationToken);
+        app.EnrollmentOrderId = order.Id;
+
+        // 2. Create PaymentTransaction
+        var transaction = new PaymentTransaction
+        {
+            EnrollmentOrderId = order.Id,
+            Provider = "manual",
+            ProviderTransactionId = "ApplicationApproved",
+            AmountEgp = price,
+            Status = PaymentStatus.Paid,
+            CreatedAt = DateTimeOffset.UtcNow
+        };
+        db.PaymentTransactions.Add(transaction);
+
+        // 3. Create or activate Enrollment
+        var existingEnrollment = await db.Enrollments
+            .FirstOrDefaultAsync(x => x.CourseId == app.CourseId && x.StudentUserId == app.StudentUserId, cancellationToken);
+        Enrollment enrollment;
+        if (existingEnrollment is null)
+        {
+            enrollment = new Enrollment
+            {
+                CourseId = app.CourseId,
+                CohortId = app.CohortId,
+                StudentUserId = app.StudentUserId,
+                EnrollmentOrderId = order.Id,
+                EnrollmentStatus = EnrollmentStatus.Active,
+                Status = "active",
+                UnitPriceEgp = price,
+                FinalPriceEgp = price,
+                CreatedAt = DateTimeOffset.UtcNow
+            };
+            db.Enrollments.Add(enrollment);
+            await db.SaveChangesAsync(cancellationToken);
+        }
+        else
+        {
+            existingEnrollment.EnrollmentOrderId = order.Id;
+            existingEnrollment.EnrollmentStatus = EnrollmentStatus.Active;
+            existingEnrollment.Status = "active";
+            existingEnrollment.CohortId = app.CohortId;
+            enrollment = existingEnrollment;
+        }
+
+        // 4. Create CohortEnrollment (if CohortId provided) and update Cohort's current student count
+        if (app.CohortId.HasValue)
+        {
+            var existingCohortEnrollment = await db.CohortEnrollments
+                .FirstOrDefaultAsync(e => e.CohortId == app.CohortId.Value && e.StudentUserId == app.StudentUserId, cancellationToken);
+            if (existingCohortEnrollment is null)
+            {
+                var cohortEnrollment = new CohortEnrollment
+                {
+                    CohortId = app.CohortId.Value,
+                    StudentUserId = app.StudentUserId,
+                    EnrollmentId = enrollment.Id,
+                    EnrolledAt = DateTimeOffset.UtcNow
+                };
+                db.CohortEnrollments.Add(cohortEnrollment);
+                
+                var cohort = await db.Cohorts.FindAsync(new object[] { app.CohortId.Value }, cancellationToken);
+                if (cohort != null)
+                {
+                    cohort.CurrentStudents += 1;
+                }
+            }
+        }
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var studentUser = await userManager.FindByIdAsync(app.StudentUserId.ToString());
+        return ToDto(app, studentUser?.Email ?? "");
+    }
+
+    public async Task<CourseApplicationDto> AdminRejectApplication(Guid applicationId, Guid adminUserId, AdminRejectApplicationRequest request, CancellationToken cancellationToken = default)
+    {
+        var app = await db.CourseApplications
+            .Include(x => x.Course)
+            .FirstOrDefaultAsync(x => x.Id == applicationId, cancellationToken);
+        if (app == null)
+            throw new InvalidOperationException("Application not found");
+
+        app.Status = ApplicationStatus.Rejected;
+        app.RejectionReason = request.RejectionReason;
+        app.LastReviewedByUserId = adminUserId;
+        app.LastReviewedAt = DateTimeOffset.UtcNow;
+        app.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var user = await userManager.FindByIdAsync(app.StudentUserId.ToString());
+        return ToDto(app, user?.Email ?? "");
+    }
+
+    public async Task<CourseApplicationDto> AdminRequestNewPaymentProof(Guid applicationId, Guid adminUserId, CancellationToken cancellationToken = default)
+    {
+        var app = await db.CourseApplications
+            .Include(x => x.Course)
+            .FirstOrDefaultAsync(x => x.Id == applicationId, cancellationToken);
+        if (app == null)
+            throw new InvalidOperationException("Application not found");
+
+        app.Status = ApplicationStatus.RequestingNewPaymentProof;
+        app.LastReviewedByUserId = adminUserId;
+        app.LastReviewedAt = DateTimeOffset.UtcNow;
+        app.UpdatedAt = DateTimeOffset.UtcNow;
+
+        await db.SaveChangesAsync(cancellationToken);
+
+        var user = await userManager.FindByIdAsync(app.StudentUserId.ToString());
+        return ToDto(app, user?.Email ?? "");
+    }
 }

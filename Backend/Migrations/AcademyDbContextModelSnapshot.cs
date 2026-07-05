@@ -349,8 +349,29 @@ namespace GenZCoders.Migrations
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("PaymentAccountName")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PaymentAccountNumber")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PaymentInstructions")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PaymentQrCodeUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<int>("Phase")
                         .HasColumnType("int");
+
+                    b.Property<bool>("PretestEnabled")
+                        .HasColumnType("bit");
+
+                    b.Property<decimal>("PretestPassingScore")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<Guid?>("PretestQuizId")
+                        .HasColumnType("uniqueidentifier");
 
                     b.Property<decimal>("PriceEgp")
                         .HasColumnType("decimal(18,2)");
@@ -400,13 +421,28 @@ namespace GenZCoders.Migrations
                     b.Property<decimal>("ApplicationScore")
                         .HasColumnType("decimal(5,2)");
 
+                    b.Property<DateTimeOffset?>("ApprovedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("ApprovedByUserId")
+                        .HasColumnType("uniqueidentifier");
+
                     b.Property<Guid?>("CohortId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<Guid>("CourseId")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("datetimeoffset");
+
                     b.Property<Guid?>("EnrollmentOrderId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTimeOffset?>("LastReviewedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<Guid?>("LastReviewedByUserId")
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTimeOffset?>("PaidAt")
@@ -418,17 +454,38 @@ namespace GenZCoders.Migrations
                     b.Property<string>("PaymentMethod")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("PaymentNotes")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PaymentProofUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<bool>("PaymentReceiptPendingReview")
                         .HasColumnType("bit");
 
                     b.Property<string>("PaymentReceiptUrl")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<string>("PaymentTransactionNumber")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<bool>("PaymentUnlocked")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid?>("PretestAttemptId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<decimal?>("PretestScore")
+                        .HasColumnType("decimal(18,2)");
+
+                    b.Property<bool>("PretestTaken")
                         .HasColumnType("bit");
 
                     b.Property<bool>("QuestionsPassed")
                         .HasColumnType("bit");
+
+                    b.Property<string>("RejectionReason")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<string>("ReviewDecision")
                         .IsRequired()
@@ -453,6 +510,9 @@ namespace GenZCoders.Migrations
                         .HasColumnType("uniqueidentifier");
 
                     b.Property<DateTimeOffset>("SubmittedAt")
+                        .HasColumnType("datetimeoffset");
+
+                    b.Property<DateTimeOffset?>("UpdatedAt")
                         .HasColumnType("datetimeoffset");
 
                     b.HasKey("Id");

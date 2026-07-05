@@ -74,6 +74,7 @@ public class ApplicationsController(IApplicationService applications, AcademyDbC
         app.PaymentReceiptUrl = request.ReceiptUrl;
         app.PaymentMethod = request.PaymentMethod;
         app.PaymentReceiptPendingReview = true;
+        app.UpdatedAt = DateTimeOffset.UtcNow;
         await db.SaveChangesAsync(cancellationToken);
         return Ok(new { success = true });
     }
@@ -90,6 +91,7 @@ public class ApplicationsController(IApplicationService applications, AcademyDbC
         app.PaymentCompleted = true;
         app.PaidAt = DateTimeOffset.UtcNow;
         app.Status = ApplicationStatus.Paid;
+        app.UpdatedAt = DateTimeOffset.UtcNow;
 
         var price = app.Course?.PriceEgp ?? 0;
 
@@ -186,6 +188,7 @@ public class ApplicationsController(IApplicationService applications, AcademyDbC
         app.PaymentReceiptPendingReview = false;
         app.PaymentCompleted = false;
         app.Status = ApplicationStatus.PaymentPending; // back to payment pending so student can try again
+        app.UpdatedAt = DateTimeOffset.UtcNow;
 
         var price = app.Course?.PriceEgp ?? 0;
         var order = new EnrollmentOrder
@@ -313,6 +316,52 @@ public class ApplicationsController(IApplicationService applications, AcademyDbC
     [HttpGet("my")]
     public async Task<IActionResult> My(CancellationToken cancellationToken)
         => Ok(await applications.GetByUserAsync(CurrentUserId(), cancellationToken));
+
+    // Phase 2 Endpoints
+    [Authorize(Roles = AcademyRole.Student)]
+    [HttpPost("start")]
+    public async Task<IActionResult> Start([FromQuery] Guid courseId, [FromQuery] Guid? cohortId, CancellationToken cancellationToken)
+        => Ok(await applications.StartApplication(courseId, cohortId, CurrentUserId(), cancellationToken));
+
+    [Authorize(Roles = AcademyRole.Student)]
+    [HttpPost("{applicationId:guid}/pretest")]
+    public async Task<IActionResult> SubmitPretest(Guid applicationId, SubmitPretestRequest request, CancellationToken cancellationToken)
+        => Ok(await applications.SubmitPretest(applicationId, CurrentUserId(), request, cancellationToken));
+
+    [Authorize]
+    [HttpGet("{courseId:guid}/payment-instructions")]
+    public async Task<IActionResult> GetPaymentInstructions(Guid courseId, CancellationToken cancellationToken)
+        => Ok(await applications.GetPaymentInstructions(courseId, cancellationToken));
+
+    [Authorize(Roles = AcademyRole.Student)]
+    [HttpPost("{applicationId:guid}/payment-proof")]
+    public async Task<IActionResult> UploadPaymentProof(Guid applicationId, UploadPaymentProofRequest request, CancellationToken cancellationToken)
+        => Ok(await applications.UploadPaymentProof(applicationId, CurrentUserId(), request, cancellationToken));
+
+    // Phase 3 Admin Endpoints
+    [Authorize(Roles = AcademyRole.AcademyAdmin)]
+    [HttpPost("{applicationId:guid}/approve")]
+    public async Task<IActionResult> AdminApprove(Guid applicationId, CancellationToken cancellationToken)
+    {
+        var result = await applications.AdminApproveApplication(applicationId, CurrentUserId(), cancellationToken);
+        return Ok(result);
+    }
+
+    [Authorize(Roles = AcademyRole.AcademyAdmin)]
+    [HttpPost("{applicationId:guid}/reject")]
+    public async Task<IActionResult> AdminReject(Guid applicationId, [FromBody] AdminRejectApplicationRequest request, CancellationToken cancellationToken)
+    {
+        var result = await applications.AdminRejectApplication(applicationId, CurrentUserId(), request, cancellationToken);
+        return Ok(result);
+    }
+
+    [Authorize(Roles = AcademyRole.AcademyAdmin)]
+    [HttpPost("{applicationId:guid}/request-new-payment-proof")]
+    public async Task<IActionResult> AdminRequestNewPaymentProof(Guid applicationId, CancellationToken cancellationToken)
+    {
+        var result = await applications.AdminRequestNewPaymentProof(applicationId, CurrentUserId(), cancellationToken);
+        return Ok(result);
+    }
 
     private Guid CurrentUserId()
         => Guid.TryParse(User.FindFirstValue(ClaimTypes.NameIdentifier), out var id) ? id : Guid.Empty;
