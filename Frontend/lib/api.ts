@@ -417,6 +417,18 @@ export const getUserApplications = () =>
 export const submitCourseApplication = (data: any) =>
   apiPost<void>("/api/applications", data);
 
+export const startApplication = (courseId: string, cohortId?: string) =>
+  apiPost<any>(`/api/applications/start?courseId=${courseId}${cohortId ? `&cohortId=${cohortId}` : ""}`);
+
+export const submitPretest = (applicationId: string, data: any) =>
+  apiPost<any>(`/api/applications/${applicationId}/pretest`, data);
+
+export const uploadPaymentProof = (applicationId: string, data: any) =>
+  apiPost<any>(`/api/applications/${applicationId}/payment-proof`, data);
+
+export const getPaymentInstructions = (courseId: string) =>
+  apiGet<any>(`/api/applications/${courseId}/payment-instructions`, null);
+
 export const updateApplicationStatus = (id: string, status: string) =>
   apiPut<void>(`/api/admin/applications/${id}/status`, { status });
 
@@ -770,6 +782,16 @@ export const approvePaymentReceipt = (applicationId: string) =>
 
 export const getApplicationCheckout = (applicationId: string) =>
   apiGet<any>(`/api/payments/application/${applicationId}/checkout`, null);
+
+// New Phase 3 Admin Application Functions
+export const adminApproveApplication = (applicationId: string) =>
+  apiPost<void>(`/api/applications/${applicationId}/approve`, {});
+
+export const adminRejectApplication = (applicationId: string, rejectionReason: string) =>
+  apiPost<void>(`/api/applications/${applicationId}/reject`, { rejectionReason });
+
+export const adminRequestNewPaymentProof = (applicationId: string) =>
+  apiPost<void>(`/api/applications/${applicationId}/request-new-payment-proof`, {});
 
 // ─── Live sessions (Zoom) ─────────────────────────────────────────────────────
 export const requestZoomSignature = (meetingNumber: string, role: number) =>

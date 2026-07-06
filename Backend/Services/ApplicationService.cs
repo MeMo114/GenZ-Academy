@@ -396,7 +396,7 @@ public class ApplicationService(
         app.PaymentProofUrl = request.ProofUrl;
         app.PaymentTransactionNumber = request.TransactionNumber;
         app.PaymentNotes = request.Notes;
-        app.Status = ApplicationStatus.PaymentSubmitted;
+        app.Status = ApplicationStatus.PaymentUnderReview;
         app.RejectionReason = null; // Clear previous rejection reason when student uploads new proof
         app.UpdatedAt = DateTimeOffset.UtcNow;
 

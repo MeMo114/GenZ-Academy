@@ -2,19 +2,36 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { getAllApplications, updateApplicationStatus, getApplicationDetails } from "@/lib/api";
+import {
+  getAllApplications,
+  getApplicationDetails,
+  adminApproveApplication,
+  adminRejectApplication,
+  adminRequestNewPaymentProof
+} from "@/lib/api";
 import Link from "next/link";
 import { useToast } from "@/lib/toast-context";
 import { exportToCsv } from "@/lib/csv-export";
 import Image from "next/image";
 import {
-  ClipboardText, ArrowLeft, Check, X, CheckCircle, Funnel, UserCircle, Calendar, DownloadSimple, ImageSquare
+  ClipboardText, ArrowLeft, Check, X, CheckCircle, UserCircle, DownloadSimple, ImageSquare, RefreshCw
 } from "@phosphor-icons/react";
 import { SkeletonTable } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
 
-const STATUSES = ["all", "Submitted", "QuestionsPassed", "PaymentPending", "Paid", "UnderReview", "Accepted", "Rejected"];
-const FINAL_STATUSES = ["Accepted", "Rejected", "Cancelled"];
+const STATUSES = [
+  "all",
+  "Draft",
+  "WaitingForPretest",
+  "PretestFailed",
+  "WaitingForPayment",
+  "PaymentSubmitted",
+  "PaymentUnderReview",
+  "RequestingNewPaymentProof",
+  "Approved",
+  "Rejected"
+];
+const FINAL_STATUSES = ["Approved", "Rejected", "Cancelled"];
 
 export default function AdminApplicationsPage() {
   const [apps, setApps] = useState<any[]>([]);
@@ -25,17 +42,27 @@ export default function AdminApplicationsPage() {
   const [selectedAppId, setSelectedAppId] = useState<string | null>(null);
   const [appDetails, setAppDetails] = useState<any>(null);
   const [detailsLoading, setDetailsLoading] = useState(false);
-  const [confirmAction, setConfirmAction] = useState<{ id: string; decision: "Accepted" | "Rejected" } | null>(null);
+  const [confirmAction, setConfirmAction] = useState<{
+    id: string;
+    decision: "Approve" | "Reject" | "RequestNewProof";
+  } | null>(null);
+  const [rejectionReason, setRejectionReason] = useState("");
+
+  // Refresh applications
+  const refreshApplications = async () => {
+    setLoading(true);
+    try {
+      const data = await getAllApplications(statusFilter === "all" ? undefined : statusFilter);
+      setApps(data?.items ?? []);
+    } catch (err) {
+      toast("Failed to load applications", "error");
+    } finally {
+      setLoading(false);
+    }
+  };
 
   useEffect(() => {
-    setLoading(true);
-    getAllApplications(statusFilter === "all" ? undefined : statusFilter)
-      .then(data => setApps(data?.items ?? []))
-      .catch(err => {
-        toast(err?.message || "Failed to load applications", "error");
-        setApps([]);
-      })
-      .finally(() => setLoading(false));
+    refreshApplications();
   }, [statusFilter, toast]);
 
   useEffect(() => {
@@ -52,12 +79,29 @@ export default function AdminApplicationsPage() {
       .finally(() => setDetailsLoading(false));
   }, [selectedAppId, toast]);
 
-  const handleReview = async (id: string, decision: "Accepted" | "Rejected") => {
+  const handleAction = async () => {
+    if (!confirmAction) return;
     try {
-      await updateApplicationStatus(id, decision);
-      setApps(apps.map(a => a.id === id ? { ...a, status: decision } : a));
-      toast(`Application ${decision.toLowerCase()}`, "success");
+      if (confirmAction.decision === "Approve") {
+        await adminApproveApplication(confirmAction.id);
+        toast("Application approved and student enrolled", "success");
+      } else if (confirmAction.decision === "Reject") {
+        await adminRejectApplication(confirmAction.id, rejectionReason);
+        toast("Application rejected", "success");
+      } else if (confirmAction.decision === "RequestNewProof") {
+        await adminRequestNewPaymentProof(confirmAction.id);
+        toast("New payment proof requested", "success");
+      }
+      await refreshApplications();
+      if (selectedAppId === confirmAction.id) {
+        setDetailsLoading(true);
+        await getApplicationDetails(selectedAppId)
+          .then(res => setAppDetails(res))
+          .catch(() => toast("Failed to refresh details", "error"))
+          .finally(() => setDetailsLoading(false));
+      }
       setConfirmAction(null);
+      setRejectionReason("");
     } catch (e: any) {
       toast(e.message || "Failed", "error");
     }
@@ -71,9 +115,9 @@ export default function AdminApplicationsPage() {
       "Cohort": a.roundName || "General Admission",
       "Status": a.status,
       "Price EGP": a.amountEgp || a.coursePrice || "",
-      "Score": a.applicationScore != null ? `${a.applicationScore}%` : "",
+      "Pretest Score": a.pretestScore != null ? `${a.pretestScore}%` : "",
       "Submitted": a.submittedAt,
-      "Payment Receipt URL": a.paymentReceiptUrl || "",
+      "Payment Proof URL": a.paymentProofUrl || "",
       "Application ID": a.id,
     }));
     exportToCsv(data, `applications-${statusFilter}`, {
@@ -82,12 +126,33 @@ export default function AdminApplicationsPage() {
       "Course": "Course",
       "Status": "Status",
       "Price EGP": "Price (EGP)",
-      "Score": "Score",
+      "Pretest Score": "Pretest Score",
       "Submitted": "Submitted Date",
-      "Payment Receipt URL": "Payment Receipt URL",
+      "Payment Proof URL": "Payment Proof URL",
       "Application ID": "Application ID",
     });
     toast("Applications exported to CSV", "success");
+  };
+
+  // Get status badge color
+  const getStatusBadge = (status: string) => {
+    switch (status) {
+      case "Approved":
+        return "bg-green-100 text-green-700";
+      case "Rejected":
+        return "bg-red-100 text-red-700";
+      case "WaitingForPayment":
+      case "RequestingNewPaymentProof":
+        return "bg-purple-100 text-purple-700";
+      case "PaymentSubmitted":
+      case "PaymentUnderReview":
+        return "bg-amber-100 text-amber-700";
+      case "WaitingForPretest":
+      case "PretestFailed":
+        return "bg-orange-100 text-orange-700";
+      default:
+        return "bg-brand-hover text-zinc-900";
+    }
   };
 
   if (loading) return <div className="w-full px-4 sm:px-6 lg:px-12 pt-4 sm:pt-6 pb-24"><SkeletonTable rows={6} cols={4} /></div>;
@@ -101,11 +166,14 @@ export default function AdminApplicationsPage() {
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <h1 className="font-display text-2xl sm:text-3xl lg:text-4xl font-black text-zinc-900 tracking-tight mb-2">Application Intake</h1>
-            <p className="text-zinc-500 font-medium">Review applications, accept/reject, and enroll students.</p>
+            <p className="text-zinc-500 font-medium">Review applications, approve payments, and enroll students.</p>
           </div>
           <div className="flex items-center gap-3">
             <button onClick={handleExport} className="flex items-center gap-2 bg-white px-5 py-3 rounded-2xl shadow-sm border border-black/5 hover:bg-zinc-50 transition-all text-sm font-bold text-zinc-700 micro-hover">
               <DownloadSimple size={18} weight="bold" /> Export CSV
+            </button>
+            <button onClick={refreshApplications} className="flex items-center gap-2 bg-white px-5 py-3 rounded-2xl shadow-sm border border-black/5 hover:bg-zinc-50 transition-all text-sm font-bold text-zinc-700 micro-hover">
+              <RefreshCw size={18} weight="bold" /> Refresh
             </button>
             <div className="flex items-center gap-3 bg-white px-6 py-4 rounded-2xl shadow-sm border border-black/5">
               <ClipboardText size={20} weight="fill" className="text-brand" />
@@ -119,7 +187,7 @@ export default function AdminApplicationsPage() {
       <div className="flex gap-2 mb-8 overflow-x-auto pb-2">
         {STATUSES.map((tab) => (
           <button key={tab} onClick={() => setStatusFilter(tab)}
-            className={`px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-widest transition-all whitespace-nowrap micro-hover ${
+            className={`px-4 py-2.5 rounded-xl text-xs font-black uppercase tracking-widest transition-all whitespace-nowrap micro-hover ${
               statusFilter === tab
                 ? "bg-zinc-900 text-white shadow-lg"
                 : "bg-white text-zinc-500 border border-black/5 hover:bg-zinc-50"
@@ -138,9 +206,10 @@ export default function AdminApplicationsPage() {
         ) : (
           apps.map((app) => {
             const isFinal = FINAL_STATUSES.includes(app.status);
+            const isPaymentReview = app.status === "PaymentSubmitted" || app.status === "PaymentUnderReview";
             return (
-              <div 
-                key={app.id} 
+              <div
+                key={app.id}
                 onClick={() => setSelectedAppId(app.id)}
                 className="bg-white rounded-[1.5rem] p-5 shadow-sm border border-black/5 hover:border-black/20 hover:shadow-md cursor-pointer transition-all duration-300"
               >
@@ -158,38 +227,39 @@ export default function AdminApplicationsPage() {
                   <div className="flex items-center gap-4 flex-shrink-0">
                     <div className="text-right hidden sm:block">
                       <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Price</div>
-                      <div className="font-bold text-zinc-900 text-sm">{app.amountEgp ? `${app.amountEgp} EGP` : app.coursePrice ? `${app.coursePrice} EGP` : '-'}</div>
+                      <div className="font-bold text-zinc-900 text-sm">{app.coursePrice != null ? `${app.coursePrice} EGP` : '-'}</div>
                     </div>
                     <div className="text-right hidden sm:block">
-                      <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Score</div>
-                      <div className="font-bold text-zinc-900 text-sm">{app.applicationScore != null ? `${app.applicationScore}%` : '-'}</div>
+                      <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Pretest</div>
+                      <div className="font-bold text-zinc-900 text-sm">{app.pretestScore != null ? `${app.pretestScore}%` : 'N/A'}</div>
                     </div>
                     <div className="text-right hidden lg:block">
                       <div className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Submitted</div>
-                      <div className="text-xs font-bold text-zinc-600">{app.submittedAt}</div>
+                      <div className="text-xs font-bold text-zinc-600">{app.createdAt ? new Date(app.createdAt).toLocaleDateString() : '-'}</div>
                     </div>
-                    <span className={`px-3 py-1 rounded-full text-[10px] font-bold uppercase tracking-widest whitespace-nowrap ${
-                      app.status === "Accepted" ? "bg-green-100 text-green-700" :
-                      app.status === "Rejected" ? "bg-red-100 text-red-700" :
-                      app.status === "PaymentPending" ? "bg-orange-100 text-orange-700" :
-                      app.status === "Paid" ? "bg-blue-100 text-blue-700" :
-                      "bg-brand-hover text-zinc-900"
-                    }`}>
+                    <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest whitespace-nowrap ${getStatusBadge(app.status)}`}>
                       {app.status.replace(/([A-Z])/g, ' $1').trim()}
                     </span>
-                    {!isFinal ? (
+                    {!isFinal && isPaymentReview ? (
                       <div className="flex gap-1.5">
-                        <button onClick={(e) => { e.stopPropagation(); setConfirmAction({ id: app.id, decision: "Accepted" }); }}
+                        <button onClick={(e) => { e.stopPropagation(); setConfirmAction({ id: app.id, decision: "Approve" }); }}
                           className="w-9 h-9 rounded-xl bg-green-100 text-green-700 flex items-center justify-center hover:bg-green-200 transition-colors micro-hover"
-                          title="Accept & Enroll">
+                          title="Approve Payment">
                           <Check size={16} weight="bold" />
                         </button>
-                        <button onClick={(e) => { e.stopPropagation(); setConfirmAction({ id: app.id, decision: "Rejected" }); }}
+                        <button onClick={(e) => { e.stopPropagation(); setConfirmAction({ id: app.id, decision: "RequestNewProof" }); }}
+                          className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center hover:bg-amber-200 transition-colors micro-hover"
+                          title="Request New Proof">
+                          <RefreshCw size={16} weight="bold" />
+                        </button>
+                        <button onClick={(e) => { e.stopPropagation(); setConfirmAction({ id: app.id, decision: "Reject" }); }}
                           className="w-9 h-9 rounded-xl bg-red-100 text-red-700 flex items-center justify-center hover:bg-red-200 transition-colors micro-hover"
                           title="Reject">
                           <X size={16} weight="bold" />
                         </button>
                       </div>
+                    ) : !isFinal ? (
+                      <div className="text-zinc-200"><CheckCircle size={18} weight="fill" /></div>
                     ) : (
                       <div className="text-zinc-200"><CheckCircle size={18} weight="fill" /></div>
                     )}
@@ -201,15 +271,15 @@ export default function AdminApplicationsPage() {
         )}
       </div>
 
-      {/* Slide-over Answers Panel */}
+      {/* Slide-over Details Panel */}
       {selectedAppId && (
         <div className="fixed inset-0 z-[100] flex justify-end">
           {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/40 backdrop-blur-md transition-opacity" 
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-md transition-opacity"
             onClick={() => setSelectedAppId(null)}
           />
-          
+
           {/* Drawer Panel */}
           <div className="relative w-full max-w-2xl h-full bg-zinc-50 shadow-2xl flex flex-col z-10 animate-in slide-in-from-right duration-500 ease-out border-l border-black/10">
             {/* Header */}
@@ -223,7 +293,7 @@ export default function AdminApplicationsPage() {
                   {detailsLoading ? "Loading Profile..." : appDetails?.studentName || "Candidate Profile"}
                 </h2>
               </div>
-              <button 
+              <button
                 onClick={() => setSelectedAppId(null)}
                 className="w-10 h-10 rounded-full border border-black/5 flex items-center justify-center text-zinc-400 hover:text-zinc-900 transition-colors bg-white hover:bg-zinc-50 hover:shadow-sm relative z-10 active:scale-95"
               >
@@ -256,106 +326,52 @@ export default function AdminApplicationsPage() {
                         <span className="font-bold text-zinc-900 text-sm">{appDetails.roundName || "General Admission"}</span>
                       </div>
                       <div>
-                        <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Submission Date</span>
-                        <span className="font-bold text-zinc-900 text-sm">{appDetails.submittedAt}</span>
+                        <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-1">Application Date</span>
+                        <span className="font-bold text-zinc-900 text-sm">{appDetails.createdAt ? new Date(appDetails.createdAt).toLocaleDateString() : '-'}</span>
                       </div>
-                      <div className="col-span-2 pt-4 border-t border-black/5 flex items-center justify-between">
-                        <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest">Screening Score</span>
-                        <span className="font-black text-brand text-2xl">{appDetails.applicationScore != null ? `${appDetails.applicationScore}%` : "Pending"}</span>
+                      <div className="col-span-2 pt-4 border-t border-black/5">
+                        <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-2">Pretest Score</span>
+                        <span className="font-black text-brand text-2xl">{appDetails.pretestScore != null ? `${appDetails.pretestScore}%` : "N/A"}</span>
                       </div>
 
-                      {/* Price & Payment Section */}
-                      {appDetails.coursePriceEgp > 0 && (
+                      {/* Price Section */}
+                      {appDetails.coursePrice > 0 && (
                         <div className="col-span-2 pt-4 border-t border-black/5">
                           <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-3">Pricing</span>
                           <div className="bg-zinc-50 rounded-xl p-4 space-y-2">
                             <div className="flex justify-between items-center">
                               <span className="text-xs font-bold text-zinc-500">Course Price</span>
-                              <span className="text-sm font-black text-zinc-900">{appDetails.coursePriceEgp} EGP</span>
+                              <span className="text-sm font-black text-zinc-900">{appDetails.coursePrice} EGP</span>
                             </div>
-                            {appDetails.discountEgp > 0 && (
-                              <>
-                                <div className="flex justify-between items-center">
-                                  <span className="text-xs font-bold text-zinc-500 flex items-center gap-1.5">
-                                    Discount {appDetails.promoCode ? <span className="text-[9px] font-black uppercase tracking-widest text-green-600 bg-green-100 px-1.5 py-0.5 rounded">Code: {appDetails.promoCode}</span> : ''}
-                                  </span>
-                                  <span className="text-sm font-black text-green-600">-{appDetails.discountEgp} EGP</span>
-                                </div>
-                                {appDetails.discountReason && (
-                                  <div className="text-[10px] text-zinc-400 font-medium pl-2">{appDetails.discountReason}</div>
-                                )}
-                              </>
-                            )}
-                            <div className="flex justify-between items-center pt-2 border-t border-black/10">
-                              <span className="text-xs font-black text-zinc-700">Total Paid</span>
-                              <span className="text-base font-black text-zinc-900">{appDetails.amountPaid || appDetails.coursePriceEgp} EGP</span>
-                            </div>
-                            {appDetails.paymentMethod && (
-                              <div className="flex justify-between items-center pt-1">
-                                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Method</span>
-                                <span className="text-xs font-bold text-zinc-600">{appDetails.paymentMethod}</span>
-                              </div>
-                            )}
-                            {appDetails.paymentReference && (
-                              <div className="flex justify-between items-center pt-1">
-                                <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Reference</span>
-                                <span className="text-xs font-mono font-bold text-zinc-600">{appDetails.paymentReference}</span>
-                              </div>
-                            )}
                           </div>
                         </div>
                       )}
-                      {appDetails.paymentReceiptUrl && (
+
+                      {/* Payment Proof */}
+                      {appDetails.paymentProofUrl && (
                         <div className="col-span-2 pt-4 border-t border-black/5">
-                          <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-3">Payment Receipt</span>
-                          <a href={appDetails.paymentReceiptUrl} target="_blank" rel="noopener noreferrer" className="block relative w-full aspect-video max-w-md rounded-xl overflow-hidden border border-black/10 bg-zinc-100 group">
-                            <Image src={appDetails.paymentReceiptUrl} alt="Payment receipt" fill className="object-contain group-hover:scale-105 transition-transform duration-500" />
+                          <span className="text-[10px] font-black text-zinc-400 uppercase tracking-widest block mb-3">Payment Proof</span>
+                          <a href={appDetails.paymentProofUrl} target="_blank" rel="noopener noreferrer" className="block relative w-full aspect-video max-w-md rounded-xl overflow-hidden border border-black/10 bg-zinc-100 group">
+                            <Image src={appDetails.paymentProofUrl} alt="Payment proof" fill className="object-contain group-hover:scale-105 transition-transform duration-500" />
                             <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors flex items-center justify-center">
                               <span className="text-white text-xs font-bold bg-black/60 px-4 py-2 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">View Full Image</span>
                             </div>
                           </a>
+                          <div className="mt-3 space-y-1">
+                            {appDetails.paymentTransactionNumber && (
+                              <p className="text-sm text-zinc-600 font-medium">
+                                <span className="text-zinc-400 font-bold text-xs uppercase tracking-wider">Transaction:</span> {appDetails.paymentTransactionNumber}
+                              </p>
+                            )}
+                            {appDetails.paymentNotes && (
+                              <p className="text-sm text-zinc-600 font-medium">
+                                <span className="text-zinc-400 font-bold text-xs uppercase tracking-wider">Notes:</span> {appDetails.paymentNotes}
+                              </p>
+                            )}
+                          </div>
                         </div>
                       )}
                     </div>
-                  </div>
-
-                  {/* Student Answers Section */}
-                  <div className="space-y-4">
-                    <h3 className="font-display font-black text-zinc-900 text-xl tracking-tight flex items-center gap-3">
-                      Evaluation Answers
-                      <span className="text-xs font-bold text-zinc-400 bg-zinc-100 px-2.5 py-1 rounded-lg tracking-normal">
-                        {appDetails.answers?.length || 0} Questions
-                      </span>
-                    </h3>
-                    
-                    {appDetails.answers && appDetails.answers.length > 0 ? (
-                      <div className="space-y-4">
-                        {appDetails.answers.map((answer: any, idx: number) => (
-                          <div key={idx} className="border border-black/5 rounded-[1.5rem] p-6 bg-white shadow-sm space-y-4 transition-all hover:shadow-md hover:border-brand/20">
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex gap-3 items-start">
-                                <span className="text-[10px] font-black text-brand bg-[#ffe6e6] px-2.5 py-1.5 rounded-lg shrink-0 mt-0.5">Q{idx + 1}</span>
-                                <p className="text-sm font-bold text-zinc-900 leading-relaxed">{answer.questionText}</p>
-                              </div>
-                              {answer.isCorrect !== null && (
-                                <span className={`px-2.5 py-1 rounded-md text-[9px] font-black uppercase tracking-widest shrink-0 ${answer.isCorrect ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>
-                                  {answer.isCorrect ? "Correct" : "Incorrect"}
-                                </span>
-                              )}
-                            </div>
-                            
-                            <div className="bg-zinc-50 border border-black/5 rounded-[1rem] p-4 ml-11">
-                              <span className="text-[9px] font-black text-zinc-400 uppercase tracking-widest block mb-2">Student Response</span>
-                              <p className="text-sm font-medium text-zinc-800 break-words leading-relaxed">{answer.answerText || "No answer provided."}</p>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    ) : (
-                      <div className="bg-white border border-dashed border-black/10 rounded-[2rem] p-10 text-center">
-                        <p className="text-zinc-400 text-sm font-bold">No application questions were configured.</p>
-                      </div>
-                    )}
                   </div>
                 </>
               ) : (
@@ -368,18 +384,28 @@ export default function AdminApplicationsPage() {
             {/* Footer Review Decision Panel - Sticky */}
             {appDetails && !FINAL_STATUSES.includes(appDetails.status) && (
               <div className="p-6 border-t border-black/5 bg-white flex items-center gap-4 shrink-0 shadow-[0_-10px_40px_rgba(0,0,0,0.03)] z-20">
-                <button 
-                  onClick={() => { setConfirmAction({ id: appDetails.id, decision: "Accepted" }); }}
-                  className="flex-1 py-4 bg-zinc-950 hover:bg-zinc-800 text-white rounded-2xl font-black uppercase tracking-wider text-xs transition-all flex items-center justify-center gap-2 active:scale-95 shadow-md shadow-zinc-900/10 btn-micro"
-                >
-                  <Check size={18} weight="bold" /> Approve & Enroll
-                </button>
-                <button 
-                  onClick={() => { setConfirmAction({ id: appDetails.id, decision: "Rejected" }); }}
-                  className="w-32 py-4 bg-white border border-red-200 hover:border-red-500 text-red-600 rounded-2xl font-bold uppercase tracking-wider text-xs transition-all flex items-center justify-center gap-2 active:scale-95 hover:bg-red-50"
-                >
-                  Reject
-                </button>
+                {(appDetails.status === "PaymentSubmitted" || appDetails.status === "PaymentUnderReview") ? (
+                  <>
+                    <button
+                      onClick={() => setConfirmAction({ id: appDetails.id, decision: "Approve" })}
+                      className="flex-1 py-4 bg-green-600 hover:bg-green-700 text-white rounded-2xl font-black uppercase tracking-wider text-xs transition-all flex items-center justify-center gap-2 active:scale-95 shadow-md shadow-green-600/20 btn-micro"
+                    >
+                      <Check size={18} weight="bold" /> Approve Payment
+                    </button>
+                    <button
+                      onClick={() => setConfirmAction({ id: appDetails.id, decision: "RequestNewProof" })}
+                      className="w-40 py-4 bg-white border border-amber-200 hover:border-amber-500 text-amber-700 rounded-2xl font-bold uppercase tracking-wider text-xs transition-all flex items-center justify-center gap-2 active:scale-95 hover:bg-amber-50"
+                    >
+                      <RefreshCw size={16} weight="bold" /> New Proof
+                    </button>
+                    <button
+                      onClick={() => setConfirmAction({ id: appDetails.id, decision: "Reject" })}
+                      className="w-32 py-4 bg-white border border-red-200 hover:border-red-500 text-red-600 rounded-2xl font-bold uppercase tracking-wider text-xs transition-all flex items-center justify-center gap-2 active:scale-95 hover:bg-red-50"
+                    >
+                      Reject
+                    </button>
+                  </>
+                ) : null}
               </div>
             )}
           </div>
@@ -390,33 +416,67 @@ export default function AdminApplicationsPage() {
       <AnimatePresence>
         {confirmAction && (
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="fixed inset-0 z-[200] flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => setConfirmAction(null)} />
+            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" onClick={() => { setConfirmAction(null); setRejectionReason(""); }} />
             <motion.div initial={{ scale: 0.95, y: 20 }} animate={{ scale: 1, y: 0 }} exit={{ scale: 0.95, y: 20 }} className="relative bg-white rounded-[2.5rem] w-full max-w-md p-8 shadow-2xl border border-black/5">
               <div className="w-14 h-14 rounded-2xl bg-zinc-100 flex items-center justify-center mb-4">
-                {confirmAction.decision === "Accepted" ? (
+                {confirmAction.decision === "Approve" ? (
                   <CheckCircle size={32} className="text-green-600" weight="fill" />
+                ) : confirmAction.decision === "RequestNewProof" ? (
+                  <RefreshCw size={32} className="text-amber-600" weight="bold" />
                 ) : (
                   <X size={32} className="text-red-500" weight="bold" />
                 )}
               </div>
               <h3 className="text-2xl font-display font-black text-zinc-900 mb-2">
-                {confirmAction.decision === "Accepted" ? "Accept & Enroll" : "Reject Application"}
+                {confirmAction.decision === "Approve"
+                  ? "Approve Payment"
+                  : confirmAction.decision === "RequestNewProof"
+                  ? "Request New Payment Proof"
+                  : "Reject Application"}
               </h3>
               <p className="text-sm text-zinc-500 font-medium mb-6">
-                {confirmAction.decision === "Accepted"
-                  ? "This will mark the application as accepted and enroll the student in the course."
+                {confirmAction.decision === "Approve"
+                  ? "This will approve the payment and enroll the student in the course."
+                  : confirmAction.decision === "RequestNewProof"
+                  ? "This will request the student to upload a new payment proof."
                   : "This will reject the application and notify the student."}
               </p>
+
+              {confirmAction.decision === "Reject" && (
+                <div className="mb-6">
+                  <label className="text-xs font-bold text-zinc-700 uppercase tracking-widest block mb-2">
+                    Rejection Reason
+                  </label>
+                  <textarea
+                    value={rejectionReason}
+                    onChange={(e) => setRejectionReason(e.target.value)}
+                    placeholder="Why are you rejecting this application?"
+                    className="w-full px-4 py-3 rounded-xl border border-zinc-200 focus:border-brand focus:ring-2 focus:ring-brand/20 outline-none text-sm"
+                    rows={4}
+                  />
+                </div>
+              )}
+
               <div className="flex gap-3">
-                <button onClick={() => setConfirmAction(null)} className="flex-1 py-3.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl font-bold text-sm transition-all">
+                <button onClick={() => { setConfirmAction(null); setRejectionReason(""); }} className="flex-1 py-3.5 bg-zinc-100 hover:bg-zinc-200 text-zinc-700 rounded-xl font-bold text-sm transition-all">
                   Cancel
                 </button>
-                <button onClick={() => handleReview(confirmAction.id, confirmAction.decision)} className={`flex-1 py-3.5 rounded-xl font-bold text-sm transition-all text-white ${
-                  confirmAction.decision === "Accepted"
-                    ? "bg-green-600 hover:bg-green-700"
-                    : "bg-red-600 hover:bg-red-700"
-                }`}>
-                  {confirmAction.decision === "Accepted" ? "Yes, Enroll" : "Yes, Reject"}
+                <button
+                  onClick={handleAction}
+                  className={`flex-1 py-3.5 rounded-xl font-bold text-sm transition-all text-white ${
+                    confirmAction.decision === "Approve"
+                      ? "bg-green-600 hover:bg-green-700"
+                      : confirmAction.decision === "RequestNewProof"
+                      ? "bg-amber-600 hover:bg-amber-700"
+                      : "bg-red-600 hover:bg-red-700"
+                  }`}
+                  disabled={confirmAction.decision === "Reject" && !rejectionReason.trim()}
+                >
+                  {confirmAction.decision === "Approve"
+                    ? "Yes, Approve"
+                    : confirmAction.decision === "RequestNewProof"
+                    ? "Yes, Request"
+                    : "Yes, Reject"}
                 </button>
               </div>
             </motion.div>

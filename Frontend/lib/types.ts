@@ -98,6 +98,18 @@ export type CourseApplication = {
   reviewDecision: string;
   applicationScore: number;
   submittedAt?: string;
+  pretestEnabled: boolean;
+  pretestTaken: boolean;
+  pretestScore?: number | null;
+  pretestPassed?: boolean | null;
+  paymentProofUrl?: string | null;
+  paymentTransactionNumber?: string | null;
+  paymentNotes?: string | null;
+  rejectionReason?: string | null;
+  lastReviewedByUserId?: string | null;
+  lastReviewedAt?: string | null;
+  approvedByUserId?: string | null;
+  approvedAt?: string | null;
 };
 
 export type CartItem = {

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
-import { Clock, CheckCircle, Warning, ArrowRight, ArrowUpRight, ShieldCheck, XCircle, Bell, CalendarBlank, CaretRight } from "@phosphor-icons/react";
+import { Clock, CheckCircle, Warning, ArrowRight, ArrowUpRight, ShieldCheck, XCircle, Bell, CalendarBlank, CaretRight, Question, Receipt } from "@phosphor-icons/react";
 import type { Course, CourseApplication } from "@/lib/types";
 
 type MyApplicationsProps = {
@@ -17,13 +17,16 @@ export function MyApplicationsExperience({ courses, applications }: MyApplicatio
   const filteredApplications = applications.filter(app => {
     const status = app.status.toLowerCase();
     if (filter === 'pending') {
-      return status === 'pending' || status === 'submitted' || status === 'reviewing';
+      return ['pending','submitted','reviewing','waitingforpretest','pretestfailed','waitingforpayment','paymentsubmitted','paymentunderreview','requestingnewpaymentproof'].includes(status);
     }
     if (filter === 'accepted') {
-      return status === 'accepted' || status === 'paid' || status === 'approved';
+      return ['accepted','paid','approved'].includes(status);
     }
     return true;
   });
+
+  const pendingCount = applications.filter(a => ['pending','submitted','reviewing','waitingforpretest','pretestfailed','waitingforpayment','paymentsubmitted','paymentunderreview','requestingnewpaymentproof'].includes(a.status.toLowerCase())).length;
+  const acceptedCount = applications.filter(a => ['accepted','paid','approved'].includes(a.status.toLowerCase())).length;
 
   return (
     <div className="w-full max-w-[1200px] mx-auto px-6 lg:px-10 py-12">
@@ -62,7 +65,7 @@ export function MyApplicationsExperience({ courses, applications }: MyApplicatio
                 : 'text-zinc-600 hover:text-zinc-900'
             }`}
           >
-            Pending ({applications.filter(a => ['pending','submitted','reviewing'].includes(a.status.toLowerCase())).length})
+            Pending ({pendingCount})
           </button>
           <button 
             onClick={() => setFilter('accepted')}
@@ -72,7 +75,7 @@ export function MyApplicationsExperience({ courses, applications }: MyApplicatio
                 : 'text-zinc-600 hover:text-zinc-900'
             }`}
           >
-            Accepted ({applications.filter(a => ['accepted','paid','approved'].includes(a.status.toLowerCase())).length})
+            Accepted ({acceptedCount})
           </button>
         </div>
       </div>
@@ -83,10 +86,15 @@ export function MyApplicationsExperience({ courses, applications }: MyApplicatio
             const course = courses.find(c => c.id === app.courseId);
             const statusLower = app.status.toLowerCase();
             
-            const isAccepted = statusLower === "accepted" || statusLower === "approved" || statusLower === "paid";
+            const isApproved = statusLower === "approved" || statusLower === "accepted" || statusLower === "paid";
             const isPaid = app.paymentCompleted || statusLower === "paid";
             const isRejected = statusLower === "rejected";
-            const isPending = !isAccepted && !isRejected;
+            const isWaitingForPretest = statusLower === "waitingforpretest";
+            const isPretestFailed = statusLower === "pretestfailed";
+            const isWaitingForPayment = statusLower === "waitingforpayment";
+            const isPaymentSubmitted = statusLower === "paymentsubmitted";
+            const isPaymentUnderReview = statusLower === "paymentunderreview";
+            const isRequestingNewPaymentProof = statusLower === "requestingnewpaymentproof";
 
             // Configure dynamic luxury-tier styles per state
             let cardStyle = {
@@ -97,6 +105,8 @@ export function MyApplicationsExperience({ courses, applications }: MyApplicatio
               icon: <Clock size={28} weight="fill" />
             };
 
+            let actionButton = null;
+
             if (isRejected) {
               cardStyle = {
                 bg: "bg-[#fffdfd] border border-red-100/80 shadow-sm hover:shadow-md",
@@ -105,15 +115,39 @@ export function MyApplicationsExperience({ courses, applications }: MyApplicatio
                 iconWrapper: "bg-red-50 border border-red-100 text-red-500",
                 icon: <XCircle size={28} weight="fill" />
               };
-            } else if (isPending) {
+            } else if (isWaitingForPretest) {
               cardStyle = {
                 bg: "bg-[#fffdf6] border border-amber-200/60 shadow-sm hover:shadow-md",
                 badgeBg: "bg-amber-50 border border-amber-200/50 text-amber-700",
-                badgeLabel: "Review in Progress",
+                badgeLabel: "Ready to Take Pretest",
                 iconWrapper: "bg-amber-50 border border-amber-200/50 text-amber-500 animate-[pulse_2s_infinite]",
-                icon: <Clock size={28} weight="fill" />
+                icon: <Question size={28} weight="fill" />
               };
-            } else if (isAccepted && !isPaid) {
+              actionButton = (
+                <Link
+                  href={`/pretest?applicationId=${app.id}&courseId=${app.courseId}`}
+                  className="px-8 py-4 bg-[#ff1a1a] text-white hover:bg-[#cc0000] rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-md shadow-[#ff1a1a]/20 hover:-translate-y-0.5 flex items-center justify-center gap-2 text-center"
+                >
+                  Start Pretest <ArrowRight size={14} weight="bold" />
+                </Link>
+              );
+            } else if (isPretestFailed) {
+              cardStyle = {
+                bg: "bg-[#fffdfd] border border-red-100/60 shadow-sm hover:shadow-md",
+                badgeBg: "bg-red-50 border border-red-100/50 text-red-700",
+                badgeLabel: `Pretest Failed (${app.pretestScore}%)`,
+                iconWrapper: "bg-red-50 border border-red-100/50 text-red-500",
+                icon: <Warning size={28} weight="fill" />
+              };
+              actionButton = (
+                <Link
+                  href={`/pretest?applicationId=${app.id}&courseId=${app.courseId}`}
+                  className="px-8 py-4 bg-[#ff1a1a] text-white hover:bg-[#cc0000] rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-md shadow-[#ff1a1a]/20 hover:-translate-y-0.5 flex items-center justify-center gap-2 text-center"
+                >
+                  Retry Pretest <ArrowRight size={14} weight="bold" />
+                </Link>
+              );
+            } else if (isWaitingForPayment) {
               cardStyle = {
                 bg: "bg-[#faf8ff] border border-purple-200/60 shadow-sm hover:shadow-md",
                 badgeBg: "bg-purple-50 border border-purple-200/50 text-purple-700",
@@ -121,7 +155,60 @@ export function MyApplicationsExperience({ courses, applications }: MyApplicatio
                 iconWrapper: "bg-purple-50 border border-purple-200/50 text-purple-500",
                 icon: <ShieldCheck size={28} weight="fill" />
               };
-            } else if (isAccepted && isPaid) {
+              actionButton = (
+                <Link
+                  href={`/payment?applicationId=${app.id}&courseId=${app.courseId}&courseName=${encodeURIComponent(course?.title || "Course")}&amount=${course?.priceEgp || 2500}`}
+                  className="px-8 py-4 bg-[#ff1a1a] text-white hover:bg-[#cc0000] rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-md shadow-[#ff1a1a]/20 hover:-translate-y-0.5 flex items-center justify-center gap-2 text-center"
+                >
+                  Complete Payment <ArrowRight size={14} weight="bold" />
+                </Link>
+              );
+            } else if (isPaymentSubmitted || isPaymentUnderReview) {
+              cardStyle = {
+                bg: "bg-[#fffdf6] border border-amber-200/60 shadow-sm hover:shadow-md",
+                badgeBg: "bg-amber-50 border border-amber-200/50 text-amber-700",
+                badgeLabel: isPaymentUnderReview ? "Payment Under Review" : "Payment Submitted",
+                iconWrapper: "bg-amber-50 border border-amber-200/50 text-amber-500 animate-[pulse_2s_infinite]",
+                icon: <Clock size={28} weight="fill" />
+              };
+              actionButton = (
+                <div className="px-6 py-3.5 bg-zinc-50 border border-black/5 text-zinc-500 font-bold text-xs uppercase tracking-widest rounded-xl text-center">
+                  Under Review
+                </div>
+              );
+            } else if (isRequestingNewPaymentProof) {
+              cardStyle = {
+                bg: "bg-[#fffdf6] border border-amber-200/60 shadow-sm hover:shadow-md",
+                badgeBg: "bg-amber-50 border border-amber-200/50 text-amber-700",
+                badgeLabel: "New Payment Proof Required",
+                iconWrapper: "bg-amber-50 border border-amber-200/50 text-amber-500 animate-[pulse_2s_infinite]",
+                icon: <Receipt size={28} weight="fill" />
+              };
+              actionButton = (
+                <Link
+                  href={`/payment?applicationId=${app.id}&courseId=${app.courseId}&courseName=${encodeURIComponent(course?.title || "Course")}&amount=${course?.priceEgp || 2500}`}
+                  className="px-8 py-4 bg-[#ff1a1a] text-white hover:bg-[#cc0000] rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-md shadow-[#ff1a1a]/20 hover:-translate-y-0.5 flex items-center justify-center gap-2 text-center"
+                >
+                  Upload New Proof <ArrowRight size={14} weight="bold" />
+                </Link>
+              );
+            } else if (isApproved && !isPaid) {
+              cardStyle = {
+                bg: "bg-[#faf8ff] border border-purple-200/60 shadow-sm hover:shadow-md",
+                badgeBg: "bg-purple-50 border border-purple-200/50 text-purple-700",
+                badgeLabel: "Seat Offered — Awaiting Payment",
+                iconWrapper: "bg-purple-50 border border-purple-200/50 text-purple-500",
+                icon: <ShieldCheck size={28} weight="fill" />
+              };
+              actionButton = (
+                <Link
+                  href={`/payment?applicationId=${app.id}&courseId=${app.courseId}&courseName=${encodeURIComponent(course?.title || "Course")}&amount=${course?.priceEgp || 2500}`}
+                  className="px-8 py-4 bg-[#ff1a1a] text-white hover:bg-[#cc0000] rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-md shadow-[#ff1a1a]/20 hover:-translate-y-0.5 flex items-center justify-center gap-2 text-center"
+                >
+                  Complete Payment <ArrowRight size={14} weight="bold" />
+                </Link>
+              );
+            } else if (isApproved && isPaid) {
               cardStyle = {
                 bg: "bg-[#f5fdf9] border border-emerald-200/60 shadow-sm hover:shadow-md",
                 badgeBg: "bg-emerald-50 border border-emerald-200/50 text-emerald-700",
@@ -129,6 +216,37 @@ export function MyApplicationsExperience({ courses, applications }: MyApplicatio
                 iconWrapper: "bg-emerald-50 border border-emerald-200/50 text-emerald-500",
                 icon: <CheckCircle size={28} weight="fill" />
               };
+              actionButton = course?.isActive !== false ? (
+                <Link 
+                  href={`/room/${app.courseId}`} 
+                  className="px-8 py-4 bg-primary text-white border border-[#ff1a1a] border-1.5 hover:bg-[#ff1a1a]/10 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg hover:-translate-y-0.5 flex items-center justify-center gap-2 text-center"
+                >
+                  Enter Course Room <ArrowUpRight size={14} weight="bold" style={{color:"#ff0000ff"}}/>
+                </Link>
+              ) : (
+                <div className="flex flex-col gap-2 max-w-sm">
+                  <button 
+                    disabled 
+                    className="px-8 py-4 bg-zinc-100 text-zinc-400 border border-zinc-200 rounded-2xl font-black text-xs uppercase tracking-widest cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    Preparation Stage <CalendarBlank size={14} />
+                  </button>
+                  <div className="bg-amber-50 border border-amber-200/50 p-4 rounded-2xl flex flex-col gap-2 shadow-sm">
+                    <div className="flex items-start gap-2">
+                      <Warning size={16} weight="fill" className="text-amber-600 shrink-0 mt-0.5" />
+                      <p className="text-[11px] font-medium text-amber-900 leading-relaxed">
+                        This course doesn&apos;t start yet. We will notify you via email and phone once the dynamic cohort launches.
+                      </p>
+                    </div>
+                    <Link 
+                      href="/dashboard/profile"
+                      className="text-[10px] font-black uppercase tracking-wider text-amber-700 hover:text-amber-950 flex items-center gap-1 mt-1 transition-colors"
+                    >
+                      Configure notification preferences <CaretRight size={10} weight="bold" />
+                    </Link>
+                  </div>
+                </div>
+              );
             }
 
             return (
@@ -163,62 +281,12 @@ export function MyApplicationsExperience({ courses, applications }: MyApplicatio
 
                 <div className="flex flex-col sm:flex-row lg:items-center gap-4 shrink-0 sm:self-start lg:self-center">
                   {/* State-Based Visual Gates */}
-                  {isPending && (
-                    <div className="px-6 py-3.5 bg-zinc-50 border border-black/5 text-zinc-500 font-bold text-xs uppercase tracking-widest rounded-xl text-center">
-                      Review in Progress
-                    </div>
-                  )}
-
                   {isRejected && (
                     <div className="px-6 py-3.5 bg-zinc-50 border border-black/5 text-zinc-400 font-bold text-xs uppercase tracking-widest rounded-xl text-center">
                       Application Declined
                     </div>
                   )}
-
-                  {isAccepted && !isPaid && (
-                    <Link
-                      href={`/payment?applicationId=${app.id}&courseId=${app.courseId}&courseName=${encodeURIComponent(course?.title || "Course")}&amount=${app.applicationScore > 0 ? course?.priceEgp || 2500 : 2500}`}
-                      className="px-8 py-4 bg-[#ff1a1a] text-white hover:bg-[#cc0000] rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-md shadow-[#ff1a1a]/20 hover:-translate-y-0.5 flex items-center justify-center gap-2 text-center"
-                    >
-                      Complete Payment <ArrowRight size={14} weight="bold" />
-                    </Link>
-                  )}
-
-                  {isAccepted && isPaid && (
-                    <>
-                      {course?.isActive !== false ? (
-                        <Link 
-                          href={`/room/${app.courseId}`} 
-                          className="px-8 py-4 bg-primary text-white border border-[#ff1a1a] border-1.5 hover:bg-[#ff1a1a]/10 rounded-2xl font-black text-xs uppercase tracking-widest transition-all shadow-lg hover:-translate-y-0.5 flex items-center justify-center gap-2 text-center"
-                        >
-                          Enter Course Room <ArrowUpRight size={14} weight="bold" style={{color:"#ff0000ff"}}/>
-                        </Link>
-                      ) : (
-                        <div className="flex flex-col gap-2 max-w-sm">
-                          <button 
-                            disabled 
-                            className="px-8 py-4 bg-zinc-100 text-zinc-400 border border-zinc-200 rounded-2xl font-black text-xs uppercase tracking-widest cursor-not-allowed flex items-center justify-center gap-2"
-                          >
-                            Preparation Stage <CalendarBlank size={14} />
-                          </button>
-                          <div className="bg-amber-50 border border-amber-200/50 p-4 rounded-2xl flex flex-col gap-2 shadow-sm">
-                            <div className="flex items-start gap-2">
-                              <Warning size={16} weight="fill" className="text-amber-600 shrink-0 mt-0.5" />
-                              <p className="text-[11px] font-medium text-amber-900 leading-relaxed">
-                                This course doesn&apos;t start yet. We will notify you via email and phone once the dynamic cohort launches.
-                              </p>
-                            </div>
-                            <Link 
-                              href="/dashboard/profile"
-                              className="text-[10px] font-black uppercase tracking-wider text-amber-700 hover:text-amber-950 flex items-center gap-1 mt-1 transition-colors"
-                            >
-                              Configure notification preferences <CaretRight size={10} weight="bold" />
-                            </Link>
-                          </div>
-                        </div>
-                      )}
-                    </>
-                  )}
+                  {actionButton}
                 </div>
               </div>
             );
