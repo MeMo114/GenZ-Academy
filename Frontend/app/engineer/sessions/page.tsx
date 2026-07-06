@@ -120,7 +120,7 @@ export default function EngineerSessionsPage() {
                     className="w-full py-3 bg-brand hover:bg-brand-hover text-white rounded-xl font-bold text-sm transition-all active:scale-[0.98] flex items-center justify-center gap-2 shadow-md shadow-brand/30"
                   >
                     <VideoCamera size={18} weight="fill" />
-                    Start Live Zoom
+                    Start Live Session
                   </a>
                 )}
                 {session.cohortId && session.sessionId && (

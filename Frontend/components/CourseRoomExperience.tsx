@@ -30,7 +30,7 @@ const COURSE_IMAGES: Record<string, string> = {
 
 export function CourseRoomExperience({ room, isAdminView = false, onRefresh }: { room: CourseRoom, isAdminView?: boolean, onRefresh?: () => void }) {
   const { user } = useAuth();
-  const [activeTab, setActiveTab] = useState<"overview" | "sessions" | "curriculum" | "materials" | "next-zoom" | "tasks" | "classmates">("overview");
+  const [activeTab, setActiveTab] = useState<"overview" | "sessions" | "curriculum" | "materials" | "next-live-session" | "tasks" | "classmates">("overview");
   const [isLiveActive, setIsLiveActive] = useState(false);
   const [zoomLoading, setZoomLoading] = useState(false);
   const [zoomSignature, setZoomSignature] = useState<{ signature: string; sdkKey: string } | null>(null);
@@ -242,7 +242,7 @@ export function CourseRoomExperience({ room, isAdminView = false, onRefresh }: {
 
           {/* Tabs Navigation */}
           <div className="flex items-center gap-2 border-b border-black/5 px-2 overflow-x-auto scrollbar-none">
-             {(['overview', 'curriculum', 'materials', 'next-zoom', 'tasks', 'classmates'] as const).map(tab => (
+             {(['overview', 'curriculum', 'materials', 'next-live-session', 'tasks', 'classmates'] as const).map(tab => (
                <button
                  key={tab}
                  onClick={() => {
@@ -253,7 +253,7 @@ export function CourseRoomExperience({ room, isAdminView = false, onRefresh }: {
                    activeTab === tab ? 'text-[#ff1a1a]' : 'text-zinc-400 hover:text-zinc-600'
                  }`}
                >
-                 {tab.replace('-', ' ')}
+                 {tab === 'next-live-session' ? 'Next Live Session' : tab.replace('-', ' ')}
                  {activeTab === tab && (
                    <motion.div layoutId="room-tab" className="absolute bottom-0 left-0 right-0 h-1 bg-[#ff1a1a] rounded-t-full" />
                  )}
@@ -406,8 +406,8 @@ export function CourseRoomExperience({ room, isAdminView = false, onRefresh }: {
                  </motion.div>
                )}
 
-               {activeTab === 'next-zoom' && (
-                  <motion.div key="next-zoom" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="flex flex-col gap-8">
+               {activeTab === 'next-live-session' && (
+                  <motion.div key="next-live-session" initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0, y: -10 }} className="flex flex-col gap-8">
                      <div className="w-full bg-[#1a1a1a] rounded-[3.5rem] p-12 text-white relative overflow-hidden shadow-2xl">
                         <div className="relative z-10 flex flex-col items-center text-center max-w-2xl mx-auto">
                            <div className="w-20 h-20 bg-[#ff1a1a]/20 rounded-full flex items-center justify-center mb-8 border border-[#ff1a1a]/40 animate-bounce">
@@ -468,7 +468,7 @@ export function CourseRoomExperience({ room, isAdminView = false, onRefresh }: {
                         </div>
                         <div className="p-8 bg-white rounded-[2.5rem] border border-black/5 shadow-sm">
                            <h6 className="text-[10px] font-black uppercase tracking-widest text-zinc-400 mb-4">Platform</h6>
-                           <p className="text-sm font-bold text-[#ff1a1a] leading-relaxed">Integrated Zoom SDK with End-to-End Encryption.</p>
+                           <p className="text-sm font-bold text-[#ff1a1a] leading-relaxed">Integrated video conferencing SDK with End-to-End Encryption.</p>
                         </div>
                      </div>
                   </motion.div>

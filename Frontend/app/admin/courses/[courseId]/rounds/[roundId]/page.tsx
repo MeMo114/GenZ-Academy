@@ -35,7 +35,7 @@ const TABS: { key: Tab; label: string; icon: any }[] = [
   { key: "sessions", label: "Sessions", icon: Slideshow },
   { key: "materials", label: "Materials", icon: FilePdf },
   { key: "tasks", label: "Tasks & Quizzes", icon: ClipboardText },
-  { key: "zoom", label: "Zoom", icon: Video },
+  { key: "zoom", label: "Live Session", icon: Video },
   { key: "students", label: "Students", icon: UsersThree },
 ];
 
@@ -932,10 +932,10 @@ function ZoomTab({ round, onRefresh }: { round: RoundDetail; onRefresh: () => vo
         zoomJoinUrl: form.zoomJoinUrl || null,
         zoomStartUrl: form.zoomStartUrl || null,
       } as any);
-      toast("Zoom configuration saved", "success");
+      toast("Live Session configuration saved", "success");
       onRefresh();
     } catch (e: any) {
-      toast(e.message || "Failed to save Zoom config", "error");
+      toast(e.message || "Failed to save Live Session config", "error");
     } finally {
       setSaving(false);
     }
@@ -950,10 +950,10 @@ function ZoomTab({ round, onRefresh }: { round: RoundDetail; onRefresh: () => vo
         zoomJoinUrl: res.zoomJoinUrl || "",
         zoomStartUrl: res.zoomStartUrl || "",
       });
-      toast("Zoom meeting generated successfully!", "success");
+      toast("Live Session generated successfully!", "success");
       onRefresh();
     } catch (e: any) {
-      toast(e.message || "Failed to generate Zoom meeting", "error");
+      toast(e.message || "Failed to generate Live Session", "error");
     } finally {
       setGenerating(false);
     }
@@ -966,8 +966,8 @@ function ZoomTab({ round, onRefresh }: { round: RoundDetail; onRefresh: () => vo
           <Video size={24} weight="fill" className="text-blue-600" />
         </div>
         <div>
-          <h2 className="text-xl font-display font-bold text-zinc-900">Zoom Meeting Configuration</h2>
-          <p className="text-sm text-zinc-500">Configure or dynamically generate a Zoom meeting for this round.</p>
+          <h2 className="text-xl font-display font-bold text-zinc-900">Live Session Configuration</h2>
+          <p className="text-sm text-zinc-500">Configure or dynamically generate a live session for this round.</p>
         </div>
       </div>
       <div className="space-y-4 max-w-lg">
@@ -1001,11 +1001,11 @@ function ZoomTab({ round, onRefresh }: { round: RoundDetail; onRefresh: () => vo
         <div className="flex flex-wrap gap-3 mt-4">
           <button onClick={handleSave} disabled={saving || generating}
             className="px-6 py-3 bg-zinc-900 text-white rounded-xl font-bold text-sm hover:bg-black disabled:opacity-50 flex items-center gap-2 shadow-lg">
-            <FloppyDisk size={18} weight="bold" /> {saving ? "Saving..." : "Save Zoom Config"}
+            <FloppyDisk size={18} weight="bold" /> {saving ? "Saving..." : "Save Live Session Config"}
           </button>
           <button onClick={handleGenerate} disabled={saving || generating}
             className="px-6 py-3 bg-blue-600 text-white rounded-xl font-bold text-sm hover:bg-blue-700 disabled:opacity-50 flex items-center gap-2 shadow-lg transition-all">
-            <Video size={18} weight="bold" /> {generating ? "Generating..." : "Generate Dynamic Zoom Session"}
+            <Video size={18} weight="bold" /> {generating ? "Generating..." : "Generate Dynamic Live Session"}
           </button>
         </div>
       </div>
@@ -1265,7 +1265,7 @@ function RoomCommandCenter({ round, onRefresh }: { round: RoundDetail; onRefresh
               {round.zoomStartUrl ? (
                 <a href={round.zoomStartUrl} target="_blank" rel="noopener noreferrer"
                   className="px-6 py-3.5 bg-brand hover:bg-brand-hover text-white rounded-2xl font-black text-xs uppercase tracking-widest transition-all flex items-center gap-2.5 shadow-lg shadow-brand/30 active:scale-95">
-                  <Video size={18} weight="fill" /> Start Zoom (Host)
+                  <Video size={18} weight="fill" /> Start Live Session (Host)
                 </a>
               ) : liveWeek.sessionLink ? (
                 <a href={liveWeek.sessionLink} target="_blank" rel="noopener noreferrer"
@@ -1477,7 +1477,7 @@ function RoomCommandCenter({ round, onRefresh }: { round: RoundDetail; onRefresh
                 <Video size={22} weight="fill" className="text-white" />
               </div>
               <div>
-                <h3 className="text-base font-black text-zinc-900 leading-none mb-0.5">Zoom Quick-Launch</h3>
+                <h3 className="text-base font-black text-zinc-900 leading-none mb-0.5">Live Session Quick-Launch</h3>
                 <p className="text-[10px] font-bold text-zinc-400 uppercase tracking-widest">Start or join the live meeting</p>
               </div>
             </div>
@@ -1517,8 +1517,8 @@ function RoomCommandCenter({ round, onRefresh }: { round: RoundDetail; onRefresh
                 <div className="w-16 h-16 rounded-2xl bg-zinc-50 flex items-center justify-center mx-auto mb-3 border border-black/5">
                   <Video size={28} weight="duotone" className="text-zinc-300" />
                 </div>
-                <p className="text-sm font-bold text-zinc-400 mb-1">No Zoom Configured</p>
-                <p className="text-[10px] text-zinc-400 font-medium">Set up Zoom in the Zoom tab or generate dynamically.</p>
+                <p className="text-sm font-bold text-zinc-400 mb-1">No Live Session Configured</p>
+                <p className="text-[10px] text-zinc-400 font-medium">Set up a live session in the Live Session tab or generate dynamically.</p>
               </div>
             )}
           </div>

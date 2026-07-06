@@ -121,8 +121,23 @@ export function AuthExperience() {
             ? "https://genzcoders-azure.vercel.app"
             : "https://genzacademy.vercel.app";
         
-        // Use destination from API response or default based on user state
-        const destination = data.destination || (data.user?.profileCompleted ? "/dashboard" : "/onboarding");
+        // Use destination from API response or default based on user role
+        let destination = data.destination;
+        if (!destination) {
+          if (!data.user?.profileCompleted && data.user?.role === "student") {
+            destination = "/onboarding";
+          } else if (data.user?.role === "academy_admin" || data.user?.role === "admin") {
+            destination = "/admin";
+          } else if (data.user?.role === "engineer") {
+            destination = "/engineer";
+          } else if (data.user?.role === "cta") {
+            destination = "/cta";
+          } else if (data.user?.role === "student") {
+            destination = "/dashboard/courses";
+          } else {
+            destination = "/dashboard";
+          }
+        }
         window.location.href = `${targetOrigin}${destination}`;
       }
     } catch (err: any) {

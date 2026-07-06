@@ -137,7 +137,7 @@ export function AcademyConsoleExperience({ courses, rounds, room, leaderboard }:
           <p className="section-kicker">Academy operating system</p>
           <h1>Every backend workflow now has a frontend surface.</h1>
           <p>
-            Student application, questions, payment, cart, referral, notifications, course room, Zoom config, content,
+            Student application, questions, payment, cart, referral, notifications, course room, live session config, content,
             quizzes, attendance, application review, and round operations live here.
           </p>
         </div>
@@ -294,10 +294,10 @@ export function AcademyConsoleExperience({ courses, rounds, room, leaderboard }:
       {tab === "room" && (
         <section className="console-grid section-pad compact-pad">
           <div className="ops-card">
-            <FormTitle icon={VideoCamera} title="Course room and embedded Zoom" />
+            <FormTitle icon={VideoCamera} title="Course room and embedded live session" />
             <div className="zoom-frame">
               <VideoCamera size={46} weight="duotone" />
-              <strong>Zoom Meeting SDK container</strong>
+              <strong>Live Session SDK container</strong>
               <span>Use `/api/live-sessions/{room.weeks[0]?.sessionInstanceId}/embed-config` for SDK config.</span>
             </div>
             <div className="room-weeks-mini">
@@ -376,7 +376,7 @@ export function AcademyConsoleExperience({ courses, rounds, room, leaderboard }:
           {[
             ["Admin", "Create courses/rounds, review dashboards, send notifications, manage academy data."],
             ["Engineer", "Review/accept students, move students between rounds, monitor technical progress."],
-            ["Instructor", "Create Zoom sessions, teach live, manage lessons, materials, tasks, and quizzes."],
+            ["Instructor", "Create live sessions, teach live, manage lessons, materials, tasks, and quizzes."],
             ["CAT", "Add quizzes, lessons, materials, support-week content, and assist course delivery."],
             ["Student", "Apply, pay, join course rooms, submit quizzes/tasks, earn XP, and receive notifications."]
           ].map(([role, text]) => (
