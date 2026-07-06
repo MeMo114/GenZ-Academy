@@ -156,9 +156,37 @@ public class ApplicationService(
         => await db.CourseApplications
             .AsNoTracking()
             .Include(x => x.StudentUser)
+            .Include(x => x.Course) // Include Course for Course.PretestEnabled
             .Where(x => x.StudentUserId == userId)
             .OrderByDescending(x => x.SubmittedAt)
-            .Select(x => ToDto(x, x.StudentUser == null ? string.Empty : x.StudentUser.Email ?? string.Empty))
+            .Select(x => new CourseApplicationDto(
+                x.Id,
+                x.CourseId,
+                x.CohortId,
+                x.StudentUser.Email ?? string.Empty,
+                x.Status,
+                x.QuestionsPassed,
+                x.PaymentUnlocked,
+                x.PaymentCompleted,
+                x.PaymentReceiptUrl,
+                x.PaymentMethod,
+                x.PaymentReceiptPendingReview,
+                x.ReviewDecision,
+                x.ApplicationScore,
+                x.Course.PretestEnabled,
+                x.PretestTaken,
+                x.PretestScore,
+                x.PretestTaken && x.Course != null && x.PretestScore.HasValue 
+                    ? x.PretestScore >= x.Course.PretestPassingScore 
+                    : null,
+                x.PaymentProofUrl,
+                x.PaymentTransactionNumber,
+                x.PaymentNotes,
+                x.RejectionReason,
+                x.LastReviewedByUserId,
+                x.LastReviewedAt,
+                x.ApprovedByUserId,
+                x.ApprovedAt))
             .ToListAsync(cancellationToken);
 
     private async Task AcceptApplicationAsync(CourseApplication application, Guid? reviewerUserId, string? notes, CancellationToken cancellationToken)
