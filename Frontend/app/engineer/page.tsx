@@ -95,10 +95,10 @@ export default function EngineerDashboardOverview() {
                         rel="noopener noreferrer" 
                         className="px-4 py-2 bg-brand hover:bg-brand-hover text-white rounded-xl text-xs font-bold transition-all active:scale-[0.98] flex items-center gap-1"
                       >
-                        <VideoCamera size={14} weight="fill" /> Start Zoom
+                        <VideoCamera size={14} weight="fill" /> Start Live Session
                       </a>
                     ) : (
-                      <span className="px-3 py-1.5 bg-zinc-100 text-zinc-400 rounded-lg text-[10px] font-bold">Zoom Link Pending</span>
+                      <span className="px-3 py-1.5 bg-zinc-100 text-zinc-400 rounded-lg text-[10px] font-bold">Meeting Link Pending</span>
                     )}
                     <Link 
                       href="/engineer/sessions" 

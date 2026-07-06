@@ -156,7 +156,7 @@ export function StudentDashboardExperience() {
                   rel="noopener noreferrer" 
                   className="px-6 py-3 bg-[#ff1a1a] text-white font-bold rounded-xl text-xs hover:bg-[#cc0000] active:scale-[0.98] transition-all flex items-center gap-2 shadow-md shadow-[#ff1a1a]/20"
                 >
-                  <VideoCamera size={16} weight="fill" /> Join Live Zoom
+                  <VideoCamera size={16} weight="fill" /> Join Live Session
                 </a>
               ) : upcomingSessions[0].courseSlug ? (
                 <Link

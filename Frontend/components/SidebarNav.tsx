@@ -39,6 +39,7 @@ const studentNav = [
   { href: "/dashboard", icon: SquaresFour, label: "Dashboard" },
   { href: "/courses", icon: BookBookmark, label: "Catalog" },
   { href: "/dashboard/courses", icon: Folder, label: "My Courses" },
+  { href: "/applications", icon: ClipboardText, label: "My Applications" },
   { href: "/playground", icon: CodesandboxLogoIcon, label: "Playground" },
   { href: "/dashboard/sessions", icon: CalendarCheck, label: "Sessions" },
   { href: "/dashboard/progress", icon: ChartLineUp, label: "Progress" },

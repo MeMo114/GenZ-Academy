@@ -24,6 +24,7 @@ if (!Sentry.getClient()) {
       Sentry.feedbackIntegration({
         colorScheme: "dark",
         showBranding: false,
+        autoInject: false, // Hide Report a Bug button
         buttonLabel: "Report a Bug",
         submitButtonLabel: "Send Report",
         formTitle: "Report a Bug",

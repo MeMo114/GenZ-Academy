@@ -135,7 +135,7 @@ export function CourseRoomExperience({ room, isAdminView = false, onRefresh }: {
                   </div>
                   <div>
                     <div className="text-[10px] font-black uppercase tracking-widest text-zinc-400">Secure Connection</div>
-                    <h3 className="font-display font-bold text-xl text-zinc-900">Launch Zoom App</h3>
+                    <h3 className="font-display font-bold text-xl text-zinc-900">Launch Live Session App</h3>
                   </div>
                 </div>
                 <button onClick={handleCloseLive} className="w-10 h-10 rounded-full bg-white hover:bg-zinc-100 flex items-center justify-center text-zinc-400 border border-black/5 transition-colors">
@@ -144,7 +144,7 @@ export function CourseRoomExperience({ room, isAdminView = false, onRefresh }: {
               </div>
               <div className="p-8">
                 <p className="text-sm font-medium text-zinc-600 mb-8 leading-relaxed">
-                  For the best experience, including screen sharing, breakout rooms, and HD video, we recommend joining using the native Zoom desktop or mobile application.
+                  For the best experience, including screen sharing, breakout rooms, and HD video, we recommend joining using the native video conferencing desktop or mobile application.
                 </p>
                 <div className="flex flex-col gap-3">
                   <button onClick={() => {

@@ -70,6 +70,8 @@ export function AuthExperience() {
           destination = "/engineer";
         } else if (u.role === "cta") {
           destination = "/cta";
+        } else if (u.role === "student") {
+          destination = "/dashboard/courses"; // Student lands on My Courses
         }
         
         window.location.href = `${targetOrigin}${destination}`;
