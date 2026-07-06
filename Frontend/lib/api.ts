@@ -26,8 +26,8 @@ import * as Sentry from "@sentry/nextjs";
 export const API_BASE = typeof window !== "undefined"
   ? window.location.hostname.includes("localhost")
     ? "http://localhost:5079" // Local development: use localhost backend directly
-    : "" // Production: use relative URLs + Vercel proxy rewrites
-  : env.apiBaseUrl;
+    : "https://genz.runasp.net" // Production: FORCE production backend        
+  : "https://genz.runasp.net";
 // ─── Brochure Paths ───────────────────────────────────────────────────────────
 export const BROCHURE_MAP: Record<string, string> = {
   "scratch":       "/brochures/Scratch_course brochure.pdf",
