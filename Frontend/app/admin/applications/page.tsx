@@ -14,7 +14,7 @@ import { useToast } from "@/lib/toast-context";
 import { exportToCsv } from "@/lib/csv-export";
 import Image from "next/image";
 import {
-  ClipboardText, ArrowLeft, Check, X, CheckCircle, UserCircle, DownloadSimple, ImageSquare, RefreshCw
+  ClipboardText, ArrowLeft, Check, X, CheckCircle, UserCircle, DownloadSimple, ImageSquare, ArrowClockwise
 } from "@phosphor-icons/react";
 import { SkeletonTable } from "@/components/ui/Skeleton";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -173,7 +173,7 @@ export default function AdminApplicationsPage() {
               <DownloadSimple size={18} weight="bold" /> Export CSV
             </button>
             <button onClick={refreshApplications} className="flex items-center gap-2 bg-white px-5 py-3 rounded-2xl shadow-sm border border-black/5 hover:bg-zinc-50 transition-all text-sm font-bold text-zinc-700 micro-hover">
-              <RefreshCw size={18} weight="bold" /> Refresh
+              <ArrowClockwise size={18} weight="bold" /> Refresh
             </button>
             <div className="flex items-center gap-3 bg-white px-6 py-4 rounded-2xl shadow-sm border border-black/5">
               <ClipboardText size={20} weight="fill" className="text-brand" />
@@ -250,7 +250,7 @@ export default function AdminApplicationsPage() {
                         <button onClick={(e) => { e.stopPropagation(); setConfirmAction({ id: app.id, decision: "RequestNewProof" }); }}
                           className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center hover:bg-amber-200 transition-colors micro-hover"
                           title="Request New Proof">
-                          <RefreshCw size={16} weight="bold" />
+                          <ArrowClockwise size={16} weight="bold" />
                         </button>
                         <button onClick={(e) => { e.stopPropagation(); setConfirmAction({ id: app.id, decision: "Reject" }); }}
                           className="w-9 h-9 rounded-xl bg-red-100 text-red-700 flex items-center justify-center hover:bg-red-200 transition-colors micro-hover"
@@ -396,7 +396,7 @@ export default function AdminApplicationsPage() {
                       onClick={() => setConfirmAction({ id: appDetails.id, decision: "RequestNewProof" })}
                       className="w-40 py-4 bg-white border border-amber-200 hover:border-amber-500 text-amber-700 rounded-2xl font-bold uppercase tracking-wider text-xs transition-all flex items-center justify-center gap-2 active:scale-95 hover:bg-amber-50"
                     >
-                      <RefreshCw size={16} weight="bold" /> New Proof
+                      <ArrowClockwise size={16} weight="bold" /> New Proof
                     </button>
                     <button
                       onClick={() => setConfirmAction({ id: appDetails.id, decision: "Reject" })}
@@ -422,7 +422,7 @@ export default function AdminApplicationsPage() {
                 {confirmAction.decision === "Approve" ? (
                   <CheckCircle size={32} className="text-green-600" weight="fill" />
                 ) : confirmAction.decision === "RequestNewProof" ? (
-                  <RefreshCw size={32} className="text-amber-600" weight="bold" />
+                  <ArrowClockwise size={32} className="text-amber-600" weight="bold" />
                 ) : (
                   <X size={32} className="text-red-500" weight="bold" />
                 )}
